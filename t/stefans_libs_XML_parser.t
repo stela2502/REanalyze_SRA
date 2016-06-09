@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use XML::Simple;
 
-use Test::More tests => 12;
+use Test::More tests => 24;
 BEGIN { use_ok 'stefans_libs::XML_parser' }
 
 use FindBin;
@@ -117,6 +117,8 @@ $exp = {
 	'run_uniq'    => '0',
 	'run_acc_col' => [ '0', '7', '8', '12', '16', '18', '19' ]
 };
+
+
 #
 #my ($runset) = grep ( /RUN_SET/, keys %{ $IDX->{'tables'} } );
 #my ( $run_acc_cols, $informative, $run_uniqe, $run_hash, $table_rows, $tmp,
@@ -153,13 +155,15 @@ $exp = {
 #
 #$value = [ $IDX->identify_accs( $run_hash, 'ERX633857' ) ];
 #is_deeply( $value, ['ERR688855'], 'identify_accs one result' );
-#
-#@values = keys %{ $IDX->{'tables'} };
-#$exp    = [
-#	'RUN_SET', 'SAMPLE',       'SUBMISSION', 'STUDY',
-#	'Pool',    'Organization', 'EXPERIMENT'
-#];
-#
+
+@values = sort keys %{ $IDX->{'tables'} };
+$exp    = [ sort 
+	'RUN_SET', 'SAMPLE',       'SUBMISSION', 'STUDY',
+	'Pool',    'Organization', 'EXPERIMENT'
+];
+is_deeply( \@values,$exp, "The right tables were extracted from the XML file");
+
+
 ##print "\$exp = ".root->print_perl_var_def( $value ). ";\n";
 #
 #( $run_acc_cols, $informative, $run_uniqe, $run_hash ) =
@@ -309,52 +313,72 @@ $exp = {
 #
 ##### test the script!
 #
-#$value =
-#" perl -I $plugin_path/../lib/ $plugin_path/../bin/XML_parser.pl -infile $plugin_path/data/PRJEB7858.xml -outfile $plugin_path/data/output/PRJEB7858";
-#print $value;
-#
-#foreach (
-#	'STUDY',        'RUN_SET', 'Pool', 'EXPERIMENT',
-#	'Organization', 'SAMPLE',  'SUBMISSION', 'SUMMARY'
-#  )
-#{
-#	unlink("$plugin_path/data/output/PRJEB7858_$_.xls")
-#	  if ( -f "$plugin_path/data/output/PRJEB7858_$_.xls" );
-#}
-#
-#system($value );
-#
-#foreach (
-#	'STUDY',        'RUN_SET', 'Pool', 'EXPERIMENT',
-#	'Organization', 'SAMPLE',  'SUBMISSION', 'SUMMARY'
-#  )
-#{
-#	$value = "$plugin_path/data/output/PRJEB7858_$_.xls";
-#
-#	#ok( -f $value , "table '$value' was created" );
-#	ok( -f $value, "table '$_' was created" );
-#}
-#
-#if ( -f"$plugin_path/data/output/PRJEB7858_SUMMARY.xls" ) {
-#	my $data_table = data_table->new({'filename' => "$plugin_path/data/output/PRJEB7858_SUMMARY.xls"} );
-#	ok ( defined $data_table->Header_Position('Download'), 'Download column created');
-#	my $OK = 1;
-#	map { $OK = 0 unless ( $_ =~ m/wget/ ) } @{ $data_table->GetAsArray('Download')};
-#	ok ( $OK, "wget command in every Download cell" );
-#}
-#
-#
-###################################################################################
-#### establish the method of a summary table on $plugin_path/data/SRP001371.xml ###
-###################################################################################
-#
+$value =
+" perl -I $plugin_path/../lib/ $plugin_path/../bin/XML_parser.pl -infile $plugin_path/data/PRJEB7858.xml -outfile $plugin_path/data/output/PRJEB7858";
+print $value;
+
+foreach (
+	'STUDY',        'RUN_SET', 'Pool', 'EXPERIMENT',
+	'Organization', 'SAMPLE',  'SUBMISSION', 'SUMMARY'
+  )
+{
+	unlink("$plugin_path/data/output/PRJEB7858_$_.xls")
+	  if ( -f "$plugin_path/data/output/PRJEB7858_$_.xls" );
+}
+
+system($value );
+
+foreach (
+	'STUDY',        'RUN_SET', 'Pool', 'EXPERIMENT',
+	'Organization', 'SAMPLE',  'SUBMISSION', 'SUMMARY'
+  )
+{
+	$value = "$plugin_path/data/output/PRJEB7858_$_.xls";
+
+	#ok( -f $value , "table '$value' was created" );
+	ok( -f $value, "table '$_' was created" );
+}
+
+if ( -f"$plugin_path/data/output/PRJEB7858_SUMMARY.xls" ) {
+	my $data_table = data_table->new({'filename' => "$plugin_path/data/output/PRJEB7858_SUMMARY.xls"} );
+	ok ( defined $data_table->Header_Position('Download'), 'Download column created');
+	my $OK = 1;
+	map { $OK = 0 unless ( $_ =~ m/wget/ ) } @{ $data_table->GetAsArray('Download')};
+	ok ( $OK, "wget command in every Download cell" );
+}
+
+
+################################################################################
+#### load the problematic dataset $plugin_path/data/SRP001371.xml and try it ###
+################################################################################
+
+
+foreach (
+	'STUDY',        'RUN_SET', 'Pool', 'EXPERIMENT',
+	'Organization', 'SAMPLE',  'SUBMISSION', 'SUMMARY'
+  )
+{
+	$value = "$plugin_path/data/output/SRP001371_$_.xls";
+	unlink ($value) if ( -f $value );
+}
+	
 $IDX = stefans_libs::XML_parser->new();
 $xml = XMLin("$plugin_path/data/SRP001371.xml");
 $IDX ->parse_NCBI( $xml );
+$IDX->write_files ( "$plugin_path/data/output/SRP001371" );
+
+foreach (
+	'STUDY',        'RUN_SET', 'Pool', 'EXPERIMENT',
+	'Organization', 'SAMPLE',  'SUBMISSION', 
+  )
+{
+	
+}
 
 $IDX->write_summary_file ("$plugin_path/data/output/SRP001371_SUMMARY.xls" );
 
-
+$value = "$plugin_path/data/output/SRP001371_SUMMARY.xls";
+ok( -f $value, "table 'SUMMARY' was created" );
 
 #print "\$exp = ".root->print_perl_var_def($value ).";\n";
 

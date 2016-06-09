@@ -123,7 +123,7 @@ sub identify_interesting_columns {
 	$self->{'Complete_Cols_No_Acc'} = [];
 	
 	$self->_rename_columns( $data_table );
-	
+	$self->enforce_acc_in_first_col();
 	my @putative_accs = $self->check_4_acc( @{ $data_table->{'data'} }[0] );
 	foreach my $putative_acc_id (@putative_accs) {
 		if (
@@ -138,11 +138,26 @@ sub identify_interesting_columns {
 	my $check = { map { $_ => 1 } @putative_accs };
 	for ( my $i = 0 ; $i < $data_table->Columns ; $i++ ) {
 		next if ( $check->{$i} );
-		
 		$tmp = $data_table->GetAsArray($i);
 		if ( $self->is_complete($tmp) and $self->not_simple($tmp) ) {
 		#if ( $self->not_simple($tmp) ) {	
 			push( @{ $self->{'Complete_Cols_No_Acc'} }, $i );
+		}
+	}
+	return $self;
+}
+
+sub enforce_acc_in_first_col {
+	my ( $self ) = @_;
+	my $data_table = $self->{'data_table'};
+	my @OK = $self->check_4_acc( $data_table->GetAsArray(0) );
+	return $self if (scalar(@OK) == $data_table->Rows);
+	## now I need to act;
+	my $OK = { map { $_ => 1}  @OK };
+	for ( my $i = $data_table->Rows()-1; $i >= 0; $i -- ){
+		unless ( $OK->{$i}){
+			splice(@{$data_table->{'data'}}, $i, 1 );
+			warn "$self->{'name'}: I had to drop row $i as the acc column was undefined (col 0)\n";
 		}
 	}
 	return $self;
@@ -267,7 +282,10 @@ sub get_all_data {
 
 =head3 identify_most_linkely_own_rows( ( <other accs>) )
 
-This function queries the acc2row_hash() for every other acc and returns the set of own row ids that is smallest.
+This function queries the acc2row_hash() for every other acc and returns 
+the set of own row ids that does overlap best with the given IDs.
+
+It will return the own ID if it has only one!
 
 =cut
 
@@ -288,7 +306,11 @@ sub identify_most_linkely_own_rows {
 			}
 		}
 	}
-	Carp::confess ( "I could not identify the own acc based on the external accessions". join(", ", @accs) ."\n") unless ( defined $with_acc);
+	if ( ! defined $with_acc and $self->{'data_table'} -> Rows == 1 ) {
+		return (0);
+	}
+	Carp::confess ( "$self->{'name'}: I could not identify the own acc based on the external accessions". join(", ", @accs) ."\n") 
+		unless ( defined $with_acc);
 	return @{ $self->acc2row_hash()->{$with_acc} };
 }
 
@@ -376,7 +398,12 @@ sub acc_col {
 	unless ( defined $self->{'_acc_col'} ){
 		$self->{'_acc_col'} = @{$self->{'Acc_Cols'}}[0]; ## use the first available...
 	}
-	Carp::confess("Sorry there is no acc column in the table '$self->{'name'}'\n")
+	Carp::confess($self->{'data_table'}->AsTestString()
+	. "\nSorry there is no acc column in the table '$self->{'name'}'\n"
+	. "None of these columns contained the acc: '"
+	. join("' '",@{$self->{'data_table'}->{'header'}}[ @{$self->{'Acc_Cols'}}])
+	. "' (".join(", ",@{$self->{'Acc_Cols'}}).")\n"
+	)
 	  unless ( defined $self->{'_acc_col'} );
 	return $self->{'_acc_col'};
 }
