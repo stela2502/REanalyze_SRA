@@ -147,7 +147,7 @@ $options->{'GTF.featureType'}     ||= 'exon';
 $options->{'GTF.attrType'}        ||= 'gene_id';
 $options->{'allowMultiOverlap'}   ||= "TRUE";
 $options->{'isPairedEnd'}         ||= 'FALSE';
-$options->{'nthreads'}            ||= 32;
+$options->{'nthreads'}            ||= 10;
 ##############################
 
 unless ( -d $fm->{'path'} ) {
@@ -182,12 +182,20 @@ $options->{'nameSamples'} = 'filename';
 
 open( OUT, ">$fm->{'path'}/LoadData.R" )
   or die "I could not create the LoadData.R script\n$!\n";
-print OUT "libraray(StefansExpressionSet)\n"
-  . "libraray(Rsubread)\n"
-  . "samples <- read.delim(file='Samples.xls', sep='\t', header=T)\n"
+sub is_digit {
+	my $NO_STRING = { map{ $_ => 1} 'T', 'F', 'TRUE', 'FALSE' };
+	my $target = shift;
+	if ($NO_STRING->{$target}) {
+		return 1;
+	}
+	return $target =~ m/^[-+]?\d+\.?\d*[eE]?[+-]?\d*/;
+}
+print OUT "library(StefansExpressionSet)\n"
+  . "library(Rsubread)\n"
+  . "samples <- read.delim(file='Samples.xls', sep='\\t', header=T)\n"
   . "counts <- featureCounts(files =as.vector(samples[,'filename']), "
   . join( ", ",
-	map { "$_ = '$options->{$_}'" } 'annot.ext', 'GTF.attrType',
+	map { if ( &is_digit($options->{$_})){ "$_ = $options->{$_}"} else{"$_ = '$options->{$_}'"} } 'annot.ext', 'GTF.attrType',
 	'GTF.featureType',     'allowMultiOverlap',
 	'isGTFAnnotationFile', 'isPairedEnd',
 	'nthreads' )
@@ -196,7 +204,7 @@ print OUT "libraray(StefansExpressionSet)\n"
   . " Samples = samples,  Analysis = NULL, name='$options->{'RobjName'}', namecol='$options->{'nameSamples'}',"
   . " namerow= '$options->{'GTF.featureType'}', usecol=NULL , outpath = NULL )\n"
   . "save( $options->{'RobjName'}, file='$options->{'RobjName'}.RData' )\n"
-  . "save( counts, file='$options->{'RobjName'}_contsObj.RData' )\n";
+  . "save( counts, file='$options->{'RobjName'}_countsObj.RData' )\n";
 close(OUT);
 print
 "You should run the R script '$fm->{'path'}/LoadData.R' to create the data objects.\n";
