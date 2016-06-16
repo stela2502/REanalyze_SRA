@@ -197,11 +197,11 @@ sub hash_of_hashes_2_data_table {
 		my $hash;
 		$problem = '';
 		while (my ( $new_value, $new_key) = each %{$table_rows->{$acc}} ){
-			if ( defined $hash->{$new_key}){
-				$problem .= "key '$new_key' is alreads defined in the temp hash: '$hash->{$new_key}' vs new value '$new_value'\n";
-			}
-			Carp::cluck ( "ACC: $acc\n$problem \$hash = {".root->print_perl_var_def($hash)."};" )
-				if ( $problem =~ m/\w/ );
+		#	if ( defined $hash->{$new_key}){
+		#		$problem .= "key '$new_key' is alreads defined in the temp hash: '$hash->{$new_key}' vs new value '$new_value'\n";
+		#	}
+		#	Carp::cluck ( "ACC: $acc\n$problem \$hash = {".root->print_perl_var_def($hash)."};" )
+		#		if ( $problem =~ m/\w/ );
 		#	print "\$new_value = $new_value\n";
 			$hash->{$new_key} = $new_value;
 		}
@@ -214,6 +214,7 @@ sub hash_of_hashes_2_data_table {
         $data_table->Add_2_Header( \@colnames );
 		$data_table->Add_Dataset( $hash );
 	}
+	Carp::confess ( "Big problem" ) unless ( ref($self) eq "stefans_libs::XML_parser::TableInformation");
 	$self->{'data_table'} = $data_table;
 	return $data_table;
 }

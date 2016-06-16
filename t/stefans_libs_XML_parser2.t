@@ -176,7 +176,7 @@ $exp = {
 
 is_deeply( $value, $exp, "the summary hash for SRR2961013");
 
-$value =stefans_libs::XML_parser::TableInformation->hash_of_hashes_2_data_table ( $summary_hash );
+$value =stefans_libs::XML_parser::TableInformation->new()->hash_of_hashes_2_data_table ( $summary_hash );
 
 #$value = $IDX->createSummaryTable();
 

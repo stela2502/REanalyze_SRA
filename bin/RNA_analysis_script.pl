@@ -133,8 +133,17 @@ close ( LOG );
 my $data_table = data_table->new( {'filename' => $samples} );
 ## now I need to find the filename column
 
+my  @fileCols = &check_4_link2files( @{$data_table->{'data'}}[0] );
+
+if (@fileCols==0 ){
+	Carp::confess ( "Sorry, but I could not link the samples table to the files you have given me!");
+}
+if (@fileCols >1 ){
+	warn "I use the first file column @{$data_table->{'header'}}[$fileCols[0]]\n";
+}
 
 
+$data_table->Add_2_Header( 'filename' );
 
 
 

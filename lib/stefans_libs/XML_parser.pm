@@ -368,7 +368,7 @@ sub create_download_column {
 		@$accession_col[$add] = undef;
 	}
 	else {
-		print "this should work!  @$accession_col[$add] + @$sample_col[$add]\n";
+		#print "this should work!  @$accession_col[$add] + @$sample_col[$add]\n";
 		# /sra/sra-instant/reads/ByRun/sra/{SRR|ERR|DRR}/<first 6 characters of accession>/<accession>/<accession>.sra
 		my ($download_col) = $ret->Add_2_Header('Download');
 		my $serv = "ftp://ftp-trace.ncbi.nih.gov";
@@ -378,7 +378,7 @@ sub create_download_column {
 				next unless ( defined @$accession_col[$a] );
 				$srr = @{ @{ $ret->{'data'} }[$i] }[ @$accession_col[$a] ];
 				$sra = @{ @{ $ret->{'data'} }[$i] }[ @$sample_col[$a] ];
-				print "sra (@$sample_col[$a]) =$sra and srr (@$accession_col[$a]) = $srr \n";
+				#print "sra (@$sample_col[$a]) =$sra and srr (@$accession_col[$a]) = $srr \n";
 				if ( $self->is_acc($sra) and $self->is_acc($srr) ) {
 					@{ @{ $ret->{'data'} }[$i] }[$download_col] =
 					    "wget -O '" 
