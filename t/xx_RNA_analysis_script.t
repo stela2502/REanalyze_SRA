@@ -2,7 +2,7 @@
 use strict;
 use warnings;
 use stefans_libs::root;
-use Test::More tests => 16;
+use Test::More tests => 21;
 use stefans_libs::flexible_data_structures::data_table;
 
 use FindBin;
@@ -16,7 +16,7 @@ if ( -d "$plugin_path/data/output/Script" ) {
 }
 
 foreach ( 'ERR688856.bam', 'ERR688857.bam', 'ERR688855.bam', 'ERR688858.bam' ) {
-	push( @files, "$plugin_path/data/fake_BAM_files/$_" );
+	push( @files, "data/fake_BAM_files/$_" );
 	ok( -f "$plugin_path/data/fake_BAM_files/$_", "fake bam file $_ exists" );
 }
 
@@ -71,6 +71,8 @@ for ( my $i = 0 ; $i < $data_table->Rows() ; $i++ ) {
 		  m/$tmp[$internal_vals->{'file -> table column:'}]/,
 "file $tmp[$internal_vals->{'filename col'}] matches corresponding accession number $tmp[$internal_vals->{'file -> table column:'}] in Samples.xls file"
 	);
+	#warn "$tmp[$internal_vals->{'filename col'}] eq ../../fake_BAM_files/$tmp[$internal_vals->{'file -> table column:'}].bam\n";
+	ok ( $tmp[$internal_vals->{'filename col'}] eq "../../fake_BAM_files/".$tmp[$internal_vals->{'file -> table column:'}].".bam", "right relative path" );
 }
 
 open( SCR, "<$plugin_path/data/output/Script/LoadData.R" )
@@ -85,11 +87,12 @@ $exp = [
 	'samples <- read.delim(file=\'Samples.xls\', sep=\'\\t\', header=T)',
 'counts <- featureCounts(files =as.vector(samples[,\'filename\']), annot.ext = \'someGTFfile.gtf\', GTF.attrType = \'gene_id\', GTF.featureType = \'exon\', allowMultiOverlap = TRUE, isGTFAnnotationFile = TRUE, isPairedEnd = FALSE, nthreads = 10)',
 	'',
-'PRJEB7858 = NGSexpressionSet( dat = cbind(counts$annotation,counts$counts), Samples = samples,  Analysis = NULL, name=\'PRJEB7858\', namecol=\'filename\', namerow= \'exon\', usecol=NULL , outpath = NULL )',
+'PRJEB7858 = NGSexpressionSet( dat = cbind(counts$annotation,counts$counts), Samples = samples,  Analysis = NULL, name=\'PRJEB7858\', namecol=\'filename\', namerow= \'gene_id\', usecol=NULL , outpath = NULL )',
 	'save( PRJEB7858, file=\'PRJEB7858.RData\' )',
 	'save( counts, file=\'PRJEB7858_countsObj.RData\' )'
 ];
 is_deeply( \@values, $exp, "LoadData.R" );
+
 
 die "You need to implement a check of the resulting R scripts!\n";
 

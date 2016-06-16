@@ -173,7 +173,7 @@ if ( @fileCols > 1 ) {
 }
 print LOG "file -> table column:\t$fileCols[0]\n";
 &reorder_files( $data_table->GetAsArray( $fileCols[0] ) );
-$data_table->add_column( 'filename', @bam_files );
+$data_table->add_column( 'filename', map { my $f = root->filemap($_); root->relative_path( $fm, $f )."/".$f->{'filename'} } @bam_files );
 $data_table->write_file("$fm->{'path'}/Samples.xls");
 
 $options->{'nameSamples'} = 'filename';
@@ -202,7 +202,7 @@ print OUT "library(StefansExpressionSet)\n"
   . ")\n" . "\n"
   . "$options->{'RobjName'} = NGSexpressionSet( dat = cbind(counts\$annotation,counts\$counts),"
   . " Samples = samples,  Analysis = NULL, name='$options->{'RobjName'}', namecol='$options->{'nameSamples'}',"
-  . " namerow= '$options->{'GTF.featureType'}', usecol=NULL , outpath = NULL )\n"
+  . " namerow= '$options->{'GTF.attrType'}', usecol=NULL , outpath = NULL )\n"
   . "save( $options->{'RobjName'}, file='$options->{'RobjName'}.RData' )\n"
   . "save( counts, file='$options->{'RobjName'}_countsObj.RData' )\n";
 close(OUT);
@@ -273,4 +273,3 @@ sub uniqe {
 	my $d = { map { $_ => 1 } @$array };
 	return keys %$d;
 }
-
