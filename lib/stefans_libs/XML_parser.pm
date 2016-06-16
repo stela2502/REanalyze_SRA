@@ -313,17 +313,18 @@ sub createSummaryTable {
 	
 	foreach $table_name ('RUN_SET', 'EXPERIMENT', 'SAMPLE', 'Pool', 'STUDY' ){
 		Carp::confess("This dataset has no $table_name information") unless (  $table_name =~ m/\w/ and $self->{'tables'}->{$table_name}->Rows() > 0  );
-		$summary_hash = stefans_libs::XML_parser::TableInformation->new( { 'name' => $table_name,  'data_table' => $self->{'tables'}->{$table_name} })->get_all_data( $summary_hash );
+		$summary_hash = stefans_libs::XML_parser::TableInformation->new( { 'debug' => $self->{'debug'}, 'name' => $table_name,  'data_table' => $self->{'tables'}->{$table_name} })->get_all_data( $summary_hash );
 	}
 	
 	
 	if ( defined $summary_hash ) {
-		my $obj =  stefans_libs::XML_parser::TableInformation->new();
+		my $obj =  stefans_libs::XML_parser::TableInformation->new( { 'debug' => $self->{'debug'}, 'name' => 'SUMMARY'} );
 		$ret = $obj->hash_of_hashes_2_data_table($summary_hash);
 		## now I only need to create the wget download for the NCBI sra files
 		$ret->Add_2_Header('Download');
 		$self->create_download_column( $ret, 'SRR', 'SRA', 'SRP', 'SRX' );
-		$self->create_download_column( $ret, 'ERR', 'ERP' );
+		$self->create_download_column( $ret, 'ERR', 'ERP', 'ERR' );
+		$self->create_download_column( $ret, 'ERR', 'ERR' );
 		$self->create_download_column( $ret, 'DRR', 'DRP' );
 		
 		#$ret->write_file($fname);
@@ -362,10 +363,12 @@ sub create_download_column {
 			}
 		}
 	}
+	
 	unless ( defined @$sample_col[$add] ) {
 		@$accession_col[$add] = undef;
 	}
 	else {
+		print "this should work!  @$accession_col[$add] + @$sample_col[$add]\n";
 		# /sra/sra-instant/reads/ByRun/sra/{SRR|ERR|DRR}/<first 6 characters of accession>/<accession>/<accession>.sra
 		my ($download_col) = $ret->Add_2_Header('Download');
 		my $serv = "ftp://ftp-trace.ncbi.nih.gov";
@@ -375,7 +378,7 @@ sub create_download_column {
 				next unless ( defined @$accession_col[$a] );
 				$srr = @{ @{ $ret->{'data'} }[$i] }[ @$accession_col[$a] ];
 				$sra = @{ @{ $ret->{'data'} }[$i] }[ @$sample_col[$a] ];
-				#print "sra (@$sample_col[$a]) =$sra and srr (@$accession_col[$a]) = $srr \n";
+				print "sra (@$sample_col[$a]) =$sra and srr (@$accession_col[$a]) = $srr \n";
 				if ( $self->is_acc($sra) and $self->is_acc($srr) ) {
 					@{ @{ $ret->{'data'} }[$i] }[$download_col] =
 					    "wget -O '" 
@@ -530,6 +533,7 @@ sub parse_NCBI {
 				} keys %$hash
 			  )
 			{
+				$hash->{$key} =~ s/\s+/ /g;
 				print "$key  =>  $hash->{$key} on line $entryID\n"
 				  if ( $self->{'debug'} and $tmp++ == 0 );
 				## this might need a new line, but that is not 100% sure!
@@ -606,6 +610,7 @@ sub print_debug {
 }
 sub is_acc {
 	my ( $self, $acc ) = @_;
+	return 0 unless ( defined $acc);
 	return $acc =~ m/^[[:alpha:]][[:alpha:]][[:alpha:]]+\d\d\d+$/;
 }
 

@@ -139,10 +139,15 @@ sub identify_interesting_columns {
 	for ( my $i = 0 ; $i < $data_table->Columns ; $i++ ) {
 		next if ( $check->{$i} );
 		$tmp = $data_table->GetAsArray($i);
-		if ( $self->is_complete($tmp) and $self->not_simple($tmp) ) {
-		#if ( $self->not_simple($tmp) ) {	
+		#if ( $self->is_complete($tmp) and $self->not_simple($tmp) ) {
+		if ( $self->not_simple($tmp) ) {	
 			push( @{ $self->{'Complete_Cols_No_Acc'} }, $i );
 		}
+	}
+	if ( $self->{'debug'}) {
+		print "$self->{'name'} -> identify_interesting_columns() has identified ".scalar(@{$self->{'Acc_Cols'}})." acc - and ".scalar(@{$self->{'Complete_Cols_No_Acc'}})." data - columns:\n".
+			"Accs in columns: ".join( ", ",@{$self->{'data_table'}->{'header'}}[@{$self->{'Acc_Cols'}} ])
+			."\nData in columns: ". join(", ",@{$self->{'data_table'}->{'header'}}[@{$self->{'Complete_Cols_No_Acc'}} ] )."\n";
 	}
 	return $self;
 }
@@ -209,6 +214,7 @@ sub hash_of_hashes_2_data_table {
         $data_table->Add_2_Header( \@colnames );
 		$data_table->Add_Dataset( $hash );
 	}
+	$self->{'data_table'} = $data_table;
 	return $data_table;
 }
 
@@ -268,6 +274,7 @@ sub get_all_data {
 			}
 			else {
 				map {
+					@$own_line_array[$_] ||= '';
 					$external_ids->{ @$own_line_array[$_] } = $header[$_]
 					  unless ( defined $external_ids->{ @$own_line_array[$_] } )
 				  } @{ $self->{'Acc_Cols'} },

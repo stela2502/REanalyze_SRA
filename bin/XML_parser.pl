@@ -57,8 +57,6 @@ my $error = '';
 
 my $options;
 
-#$options->{'ignore'} = ['SPOT_DESCRIPTOR'];
-#$options->{'addMultiple'} = [ 'ID'];
 if ( defined $options[0] ) {
 	for ( my $i = 0 ; $i < @options ; $i += 2 ) {
 		if ( $options[$i] eq "ignore" ) {
