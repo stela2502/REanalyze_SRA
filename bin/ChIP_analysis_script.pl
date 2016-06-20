@@ -168,7 +168,7 @@ $Rfile .= "read_summit <- function ( file ) {\n\t"
   . "names(ret) <- names\n\t"
   . "ret\n}\n\n"
   . "samples <- read.delim( file='Samples.xls', header=T )\n"
-  . "all_dat <- parallel::mclapply( as.vector(samples[,'filename'] ), read_summit, mc.cores=5 )\n"
+  . "all_dat <- lapply( as.vector(samples[,'filename'] ), read_summit )\n"
   . "names(all_dat) <- as.vector(samples[,'filename'] )\n"
   . "n <- names(all_dat[[1]])\n"
   
