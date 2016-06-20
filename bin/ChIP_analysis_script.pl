@@ -41,6 +41,9 @@
 use Getopt::Long;
 use Pod::Usage;
 
+use stefans_libs::flexible_data_structures::data_table;
+use stefans_libs::SampleTable;
+
 use strict;
 use warnings;
 
