@@ -78,8 +78,13 @@ sub fix_the_table{
 	$data_table = $self->_make_sure_internal($data_table, 'data_table');
 	$files  = $self->_make_sure_internal($files, 'filenames');
 	my @fileCols = $self->check_4_link2files( @{ $data_table->{'data'} }[0] );
-	if ( @fileCols == 0 ) {
-		Carp::confess(
+	my $i = 1;
+	while ( @fileCols == 0 ) {
+		@fileCols = $self->check_4_link2files( @{ $data_table->{'data'} }[$i++] );
+		last if ( $i == $data_table->Rows() );
+	}
+	unless ( @fileCols > 0 ){
+	Carp::confess(
 		"Sorry, but I could not link the samples table to the files you have given me!"
 			);
 	}

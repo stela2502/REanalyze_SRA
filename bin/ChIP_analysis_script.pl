@@ -138,6 +138,13 @@ close(LOG);
 
 ## Do whatever you want!
 
+open ( OUT, ">$fm->{'path'}/Load_SLURM_ChIP_analysis.sh") or die $!;
+print OUT "module load GCC/4.9.3-binutils-2.25  OpenMPI/1.8.8 R/3.2.3\n";
+close ( OUT );
+system ( "bash $fm->{'path'}/Load_SLURM_ChIP_analysis.sh ") unless ( $debug );
+
+
+
 ## prepare the Samples.xls file
 
 my $data_table = data_table->new( { 'filename' => $samples } );
@@ -161,7 +168,7 @@ $Rfile .= "read_summit <- function ( file ) {\n\t"
   . "names(ret) <- names\n\t"
   . "ret\n}\n\n"
   . "samples <- read.delim( file='Samples.xls', header=T )\n"
-  . "all_dat <- lapply( as.vector(samples[,'filename'] ), read_summit )\n"
+  . "all_dat <- parallel::mclapply( as.vector(samples[,'filename'] ), read_summit, mc.cores=5 )\n"
   . "names(all_dat) <- as.vector(samples[,'filename'] )\n"
   . "n <- names(all_dat[[1]])\n"
   
@@ -173,7 +180,7 @@ all_chr <- list()
 for ( x in all_dat ) {
 	n <- names(x)
 	for ( i in 1:length(n) ) { 
-		if (  length( (id = match( names(all_chr), n[i]) ) ) == 0 ) {
+		if (  length( (id = match( n[i], names(all_chr) ) ) ) == 0 || is.na(id) ) {
 			all_chr[[length(all_chr)+1]] <- x[[i]]
 			names(all_chr)[length(all_chr)] = n[i]
 		}else{
