@@ -63,6 +63,7 @@ use Getopt::Long;
 use Pod::Usage;
 
 use stefans_libs::flexible_data_structures::data_table;
+use stefans_libs::SampleTable;
 
 use strict;
 use warnings;
@@ -161,19 +162,14 @@ print LOG $task_description . "\n";
 
 ## prepare the Samples.xls file
 my $data_table = data_table->new( { 'filename' => $samples } );
-my @fileCols = &check_4_link2files( @{ $data_table->{'data'} }[0] );
-if ( @fileCols == 0 ) {
-	Carp::confess(
-"Sorry, but I could not link the samples table to the files you have given me!"
-	);
-}
-if ( @fileCols > 1 ) {
-	warn
-	  "I use the first file column @{$data_table->{'header'}}[$fileCols[0]]\n";
-}
-print LOG "file -> table column:\t$fileCols[0]\n";
-&reorder_files( $data_table->GetAsArray( $fileCols[0] ) );
-$data_table->add_column( 'filename', map { my $f = root->filemap($_); root->relative_path( $fm, $f )."/".$f->{'filename'} } @bam_files );
+
+my $OBJ = stefans_libs::SampleTable->new({ 'data_table' => $data_table, 'filenames' => \@bam_files} );
+my $ret;
+
+( $data_table, $ret ) = $OBJ -> fix_the_table ( $fm );
+
+print LOG "file -> table column:\t$ret\n";
+
 $data_table->write_file("$fm->{'path'}/Samples.xls");
 
 $options->{'nameSamples'} = 'filename';
@@ -200,11 +196,14 @@ print OUT "library(StefansExpressionSet)\n"
 	'isGTFAnnotationFile', 'isPairedEnd',
 	'nthreads' )
   . ")\n" . "\n"
-  . "$options->{'RobjName'} = NGSexpressionSet( dat = cbind(counts\$annotation,counts\$counts),"
+  . "save( counts, file='$options->{'RobjName'}_countsObj.RData' )\n"
+  . "samples[,'filename'] <- make.names(samples[,'filename'])\n"
+  . "dat = cbind(counts\$annotation,counts\$counts)\n"
+  . "$options->{'RobjName'} = NGSexpressionSet( dat = dat,"
   . " Samples = samples,  Analysis = NULL, name='$options->{'RobjName'}', namecol='$options->{'nameSamples'}',"
-  . " namerow= '$options->{'GTF.attrType'}', usecol=NULL , outpath = NULL )\n"
-  . "save( $options->{'RobjName'}, file='$options->{'RobjName'}.RData' )\n"
-  . "save( counts, file='$options->{'RobjName'}_countsObj.RData' )\n";
+  . " namerow= colnames(dat)[1], usecol=NULL , outpath = NULL )\n"
+  . "colnames($options->{'RobjName'}\@samples)[1] = str_replace(colnames($options->{'RobjName'}\@samples[1]), '^X.', '' )\n"
+  . "save( $options->{'RobjName'}, file='$options->{'RobjName'}.RData' )\n";
 close(OUT);
 print
 "You should run the R script '$fm->{'path'}/LoadData.R' to create the data objects.\n";
@@ -220,56 +219,3 @@ close(SCR);
 
 print "Extend the R script $fm->{'total'} to work with the data\n";
 
-sub match_to_one_file {
-	my $data = shift;
-	my $r    = 0;
-	foreach (@bam_files) {
-		$r++ if ( $_ =~ m/$data/ );
-	}
-	return $r == 1;
-}
-
-sub check_4_link2files {
-	my ($array) = @_;
-	grep /\d/,
-	  map { $_ if ( &match_to_one_file( @$array[$_] ) ) }
-	  0 .. ( scalar(@$array) - 1 );
-}
-
-sub to_file_pos {
-	my $data = shift;
-	for ( my $i = 0 ; $i < @bam_files ; $i++ ) {
-		return $i if ( $bam_files[$i] =~ m/$data/ );
-	}
-	warn "entry '$data' did not link to a file!";
-	return undef;
-}
-
-sub reorder_files {
-	my $array     = shift;
-	my @pos       = map { &to_file_pos($_) } @$array;
-	my @undefined = grep ( /\d+/,
-		map {
-			if ( !defined( $pos[$_] ) ) { $_ }
-		} 0 .. $#pos );
-	foreach ( sort { $b <=> $a } @undefined ) {
-		warn "I have to drop the line $_ as no file corresponds to that id\n";
-		splice( @pos,                       $_, 1 );
-		splice( @{ $data_table->{'data'} }, $_, 1 )
-		  ;    ## drop the columns that have no file attached
-	}
-	@bam_files = @bam_files[@pos];
-}
-
-sub is_complete {
-	my ( $self, $array ) = @_;
-	my $OK = 1;
-	map { $OK = 0 unless ( defined $_ and $_ =~ m/\w/ ) } @$array;
-	return $OK;
-}
-
-sub uniqe {
-	my ( $self, $array ) = @_;
-	my $d = { map { $_ => 1 } @$array };
-	return keys %$d;
-}

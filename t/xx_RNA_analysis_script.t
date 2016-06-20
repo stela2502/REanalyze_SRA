@@ -18,6 +18,7 @@ if ( -d "$plugin_path/data/output/Script" ) {
 foreach ( 'ERR688856.bam', 'ERR688857.bam', 'ERR688855.bam', 'ERR688858.bam' ) {
 	push( @files, "data/fake_BAM_files/$_" );
 	ok( -f "$plugin_path/data/fake_BAM_files/$_", "fake bam file $_ exists" );
+	#system( "touch $plugin_path/data/fake_BAM_files/$_");
 }
 
 ok( -f "$plugin_path/data/output/PRJEB7858_SUMMARY.xls",
@@ -80,19 +81,22 @@ open( SCR, "<$plugin_path/data/output/Script/LoadData.R" )
 @values = map { chomp; $_ } <SCR>;
 close(SCR);
 
-print " \$exp = " . root->print_perl_var_def( \@values ) . ";\n ";
+#print " \$exp = " . root->print_perl_var_def( \@values ) . ";\n ";
 $exp = [
 	'library(StefansExpressionSet)',
 	'library(Rsubread)',
 	'samples <- read.delim(file=\'Samples.xls\', sep=\'\\t\', header=T)',
 'counts <- featureCounts(files =as.vector(samples[,\'filename\']), annot.ext = \'someGTFfile.gtf\', GTF.attrType = \'gene_id\', GTF.featureType = \'exon\', allowMultiOverlap = TRUE, isGTFAnnotationFile = TRUE, isPairedEnd = FALSE, nthreads = 10)',
 	'',
-'PRJEB7858 = NGSexpressionSet( dat = cbind(counts$annotation,counts$counts), Samples = samples,  Analysis = NULL, name=\'PRJEB7858\', namecol=\'filename\', namerow= \'gene_id\', usecol=NULL , outpath = NULL )',
-	'save( PRJEB7858, file=\'PRJEB7858.RData\' )',
-	'save( counts, file=\'PRJEB7858_countsObj.RData\' )'
+	'save( counts, file=\'PRJEB7858_countsObj.RData\' )',
+	'samples[,\'filename\'] <- make.names(samples[,\'filename\'])',
+	'dat = cbind(counts$annotation,counts$counts)',
+	'PRJEB7858 = NGSexpressionSet( dat = dat, Samples = samples,  Analysis = NULL, name=\'PRJEB7858\', namecol=\'filename\', namerow= colnames(dat)[1], usecol=NULL , outpath = NULL )',
+	'colnames(PRJEB7858@samples)[1] = str_replace(colnames(PRJEB7858@samples[1]), \'^X.\', \'\' )',
+	'save( PRJEB7858, file=\'PRJEB7858.RData\' )'
 ];
 is_deeply( \@values, $exp, "LoadData.R" );
 
 
-die "You need to implement a check of the resulting R scripts!\n";
+#die "You need to implement a check of the resulting R scripts!\n";
 
