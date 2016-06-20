@@ -20,12 +20,13 @@
 =head1  SYNOPSIS
 
     ChIP_analysis_script.pl
-       -files     :<please add some info!> you can specify more entries to that
-       -samples       :<please add some info!>
-       -outfile       :<please add some info!>
-       -options     :<please add some info!> you can specify more entries to that
-                         format: key_1 value_1 key_2 value_2 ... key_n value_n
-
+       -files     :The MACS2 result files containing the summit information
+       -samples   :The/any sample description file you have (tab separated)
+       -outfile   :the R outfile
+       -options   :format: key_1 value_1 key_2 value_2 ... key_n value_n
+          
+          RobjName  :The R object name - make it phony (ddefaults to outfile name)
+          region    :the max length of a region of summits (default = 50bp)
 
        -help           :print this help
        -debug          :verbose output
@@ -41,6 +42,8 @@
 use Getopt::Long;
 use Pod::Usage;
 
+use Cwd;
+
 use stefans_libs::flexible_data_structures::data_table;
 use stefans_libs::SampleTable;
 
@@ -52,51 +55,49 @@ my $plugin_path = "$FindBin::Bin";
 
 my $VERSION = 'v1.0';
 
-
-my ( $help, $debug, $database, @files, $samples, $outfile, $options, @options);
+my ( $help, $debug, $database, @files, $samples, $outfile, $options, @options );
 
 Getopt::Long::GetOptions(
-       "-files=s{,}"    => \@files,
-	 "-samples=s"    => \$samples,
-	 "-outfile=s"    => \$outfile,
-       "-options=s{,}"    => \@options,
+	"-files=s{,}"   => \@files,
+	"-samples=s"    => \$samples,
+	"-outfile=s"    => \$outfile,
+	"-options=s{,}" => \@options,
 
-	 "-help"             => \$help,
-	 "-debug"            => \$debug
+	"-help"  => \$help,
+	"-debug" => \$debug
 );
 
-my $warn = '';
+my $warn  = '';
 my $error = '';
 
-unless ( defined $files[0]) {
+unless ( defined $files[0] ) {
 	$error .= "the cmd line switch -files is undefined!\n";
 }
-unless ( defined $samples) {
+unless ( defined $samples ) {
 	$error .= "the cmd line switch -samples is undefined!\n";
 }
-unless ( defined $outfile) {
+unless ( defined $outfile ) {
 	$error .= "the cmd line switch -outfile is undefined!\n";
 }
-unless ( defined $options[0]) {
+unless ( defined $options[0] ) {
 	$error .= "the cmd line switch -options is undefined!\n";
 }
 
-
-if ( $help ){
-	print helpString( ) ;
+if ($help) {
+	print helpString();
 	exit;
 }
 
-if ( $error =~ m/\w/ ){
-	helpString($error ) ;
+if ( $error =~ m/\w/ ) {
+	helpString($error);
 	exit;
 }
 
 sub helpString {
 	my $errorMessage = shift;
-	$errorMessage = ' ' unless ( defined $errorMessage); 
+	$errorMessage = ' ' unless ( defined $errorMessage );
 	print "$errorMessage.\n";
-	pod2usage(q(-verbose) => 1);
+	pod2usage( q(-verbose) => 1 );
 }
 
 ### initialize default options:
@@ -105,15 +106,21 @@ sub helpString {
 
 ###
 
+my ($task_description);
 
-my ( $task_description);
+$task_description .= 'perl ' . $plugin_path . '/ChIP_analysis_script.pl';
+$task_description .= ' -files "' . join( '" "', @files ) . '"'
+  if ( defined $files[0] );
+$task_description .= " -samples '$samples'" if ( defined $samples );
+$task_description .= " -outfile '$outfile'" if ( defined $outfile );
+$task_description .= ' -options "' . join( '" "', @options ) . '"'
+  if ( defined $options[0] );
 
-$task_description .= 'perl '.$plugin_path .'/ChIP_analysis_script.pl';
-$task_description .= ' -files "'.join( '" "', @files ).'"' if ( defined $files[0]);
-$task_description .= " -samples '$samples'" if (defined $samples);
-$task_description .= " -outfile '$outfile'" if (defined $outfile);
-$task_description .= ' -options "'.join( '" "', @options ).'"' if ( defined $options[0]);
+my $fm = root->filemap($outfile);
+unless ( -d $fm->{'path'} ) {
 
+	system("mkdir -p $fm->{'path'}");
+}
 
 for ( my $i = 0 ; $i < @options ; $i += 2 ) {
 	$options[ $i + 1 ] =~ s/\n/ /g;
@@ -121,25 +128,89 @@ for ( my $i = 0 ; $i < @options ; $i += 2 ) {
 }
 ###### default options ########
 #$options->{'something'} ||= 'default value';
+$options->{'RobjName'} ||= $fm->{'filename_core'};
+$options->{'region'} ||= 50;
 ##############################
-open ( LOG , ">$outfile.log") or die $!;
-print LOG $task_description."\n";
-close ( LOG );
 
+open( LOG, ">$outfile.log" ) or die $!;
+print LOG $task_description . "\n";
+close(LOG);
 
 ## Do whatever you want!
 
 ## prepare the Samples.xls file
-my $fm = root->filemap( $outfile );
+
 my $data_table = data_table->new( { 'filename' => $samples } );
 
-my $OBJ = stefans_libs::SampleTable->new({ 'data_table' => $data_table, 'filenames' => \@files} );
+my $OBJ = stefans_libs::SampleTable->new(
+	{ 'data_table' => $data_table, 'filenames' => \@files } );
 my $ret;
 
-( $data_table, $ret ) = $OBJ -> fix_the_table ( $fm );
+( $data_table, $ret ) = $OBJ->fix_the_table($fm);
 
 $data_table->write_file("$fm->{'path'}/Samples.xls");
 
 ## now the Samples.xls file is done - get the data into the R object
 
+my $Rfile = "#library()\n";
+$Rfile .= "read_summit <- function ( file ) {\n\t"
+  . "t <- read.delim( file=file, header=F )\n\t"
+  . "ret <- list()\n\t"
+  . "names<- unique(as.vector(t[,1]))\n\t"
+  . "ret <- lapply( names, function ( x ) { as.vector(t[which(t[,1] == x ),2]) } )\n\t"
+  . "names(ret) <- names\n\t"
+  . "ret\n}\n\n"
+  . "samples <- read.delim( file='Samples.xls', header=T )\n"
+  . "all_dat <- lapply( as.vector(samples[,'filename'] ), read_summit )\n"
+  . "names(all_dat) <- as.vector(samples[,'filename'] )\n"
+  . "n <- names(all_dat[[1]])\n"
+  
+  ;
 
+
+$Rfile .="
+all_chr <- list()
+for ( x in all_dat ) {
+	n <- names(x)
+	for ( i in 1:length(n) ) { 
+		if (  length( (id = match( names(all_chr), n[i]) ) ) == 0 ) {
+			all_chr[[length(all_chr)+1]] <- x[[i]]
+			names(all_chr)[length(all_chr)] = n[i]
+		}else{
+			all_chr[[id]]<- c( all_chr[[id]], x[[i]] )
+		}
+	}
+}
+
+## and now get the regions of interest based on a max region length
+
+mdist <- $options->{'region'}
+n <- names( all_chr )
+if ( n[1] != 'chr1' ) {
+	n<- names(all_chr) <- paste('chr',n,sep='')
+}
+bed <- NULL
+for ( i in 1:length(all_chr) ){
+	start = 0
+	for ( v in  sort (all_chr[[i]] ) ) {
+		if ( v - start > mdist ) {
+			bed <- rbind ( bed, c( n[i], v, v+mdist, 1 ))
+			start <- v
+		}else {
+			bed[nrow(bed),4] <- as.numeric(bed[nrow(bed),4]) +1
+		}
+	}
+}
+
+bed <- bed[ - which( bed[,4] == '1'), ]
+
+write.table( bed, file='PeakRegions.bed', sep='\t', quote=F, col.names=F, row.names=F )
+
+";
+
+open ( OUT ,">$fm->{'path'}/LoadData.R" ) or die $!;
+print OUT $Rfile;
+close ( OUT );
+
+chdir ( $fm->{'path'} );
+system( "R CMD BATCH LoadData.R");# unless ( $debug );
