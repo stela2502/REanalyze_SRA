@@ -159,7 +159,7 @@ $data_table->write_file("$fm->{'path'}/Samples.xls");
 
 ## now the Samples.xls file is done - get the data into the R object
 
-my $Rfile = "#library()\n";
+my $Rfile = "library(data.table)\n";
 $Rfile .= "read_summit <- function ( file ) {\n\t"
   . "t <- read.delim( file=file, header=F )\n\t"
   . "ret <- list()\n\t"
@@ -197,9 +197,10 @@ if ( n[1] != 'chr1' ) {
 	n<- names(all_chr) <- paste('chr',n,sep='')
 }
 bed <- NULL
-for ( i in 1:length(all_chr) ){
+all_beds <- lapply(  1:length(all_chr), function ( i ) { 
+	bed = NULL
 	start = 0
-	for ( v in  sort (all_chr[[i]] ) ) {
+	for ( v in data.table(x=all_chr[[i]],key='x')\$x ) {
 		if ( v - start > mdist ) {
 			bed <- rbind ( bed, c( n[i], v, v+mdist, 1 ))
 			start <- v
@@ -207,6 +208,11 @@ for ( i in 1:length(all_chr) ){
 			bed[nrow(bed),4] <- as.numeric(bed[nrow(bed),4]) +1
 		}
 	}
+	bed
+} )
+
+for ( i in  1:length(all_chr) ) {
+	bed <- rbind ( bed, all_beds[[i]] )
 }
 
 bed <- bed[ - which( bed[,4] == '1'), ]
@@ -215,9 +221,17 @@ write.table( bed, file='PeakRegions.bed', sep='\t', quote=F, col.names=F, row.na
 
 ";
 
-open ( OUT ,">$fm->{'path'}/LoadData.R" ) or die $!;
+open ( OUT ,">$fm->{'path'}/ChIP_data_2_bed_file.R" ) or die $!;
 print OUT $Rfile;
 close ( OUT );
 
 chdir ( $fm->{'path'} );
-system( "R CMD BATCH LoadData.R");# unless ( $debug );
+warn "please run the R script '$fm->{'path'}/ChIP_data_2_bed_file.R' to create the 'PeakRegions.bed' file (SLOW)\n";
+system( "R CMD BATCH ChIP_data_2_bed_file.R") if ( $debug );
+
+## and now create the real outfile
+
+open ( OUT ,">$outfile" ) or die "I could not create the main outfile $outfile\n$!\n";
+print OUT "#This is not implemented at the moment\n";
+print "outfile does not contain useful data!\n";
+close ( OUT );

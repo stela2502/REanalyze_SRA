@@ -12,6 +12,7 @@ WriteMakefile(
 	EXE_FILES    => [ map {"bin/$_" } grep !/^\./,  grep '*.pl', readdir(DIR) ],
 	PREREQ_PM    => {
 		'Stefans_Libs_Essentials' => 1.02,
+		'stefans_libs-GenomeDB' => 0.1,
 		'Digest::MD5'		  => 0,
 		'Data::Dumper' => 0,
 		'XML::Simple' => 0,
