@@ -204,7 +204,7 @@ all_beds <- lapply(  1:length(all_chr), function ( i ) {
 	for ( v in data.table(x=all_chr[[i]],key='x')\$x ) {
 		if ( v - start > mdist ) {
 			if ( last - start < 500 ) {
-				bed[nrow(bed),2,3] = c( start -50, last +50)
+				bed[nrow(bed),c(2,3)] = c( start -50, last +50)
 			}
 			bed <- rbind ( bed, c( n[i], v, v+mdist, 1 ))
 			start <- v
@@ -223,7 +223,7 @@ for ( i in  1:length(all_chr) ) {
 
 bed <- bed[ - which( bed[,4] == '1'), ]
 
-write.table( bed, file='PeakRegions.bed', sep='\t', quote=F, col.names=F, row.names=F )
+write.table( bed, file='PeakRegions.bedGraph', sep='\t', quote=F, col.names=F, row.names=F )
 
 ";
 
