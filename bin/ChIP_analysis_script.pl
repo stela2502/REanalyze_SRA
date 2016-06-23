@@ -208,11 +208,10 @@ all_beds <- lapply(  1:length(all_chr), function ( i ) {
 			}
 			bed <- rbind ( bed, c( n[i], v, v+mdist, 1 ))
 			start <- v
-			last <- v
 		}else {
-			last <- v
 			bed[nrow(bed),4] <- as.numeric(bed[nrow(bed),4]) +1
 		}
+		last <- v
 	}
 	bed
 } )
