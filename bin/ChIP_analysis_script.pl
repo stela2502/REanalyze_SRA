@@ -200,7 +200,7 @@ bed <- NULL
 all_beds <- lapply(  1:length(all_chr), function ( i ) { 
 	bed = NULL
 	start = 0
-	last = 5000
+	last = 1e+7
 	for ( v in data.table(x=all_chr[[i]],key='x')\$x ) {
 		if ( v - start > mdist ) {
 			if ( last - start < 500 ) {
