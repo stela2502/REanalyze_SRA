@@ -193,9 +193,6 @@ for ( x in all_dat ) {
 
 mdist <- $options->{'region'}
 n <- names( all_chr )
-if ( n[1] != 'chr1' ) {
-	n<- names(all_chr) <- paste('chr',n,sep='')
-}
 bed <- NULL
 all_beds <- lapply(  1:length(all_chr), function ( i ) { 
 	bed = NULL
@@ -216,13 +213,43 @@ all_beds <- lapply(  1:length(all_chr), function ( i ) {
 	bed
 } )
 
+names(all_beds) <- n
+
+map_back <- function ( chr_id, bed ) {
+	add_ons <- lapply ( all_dat, function (dat, chr_id) { 
+		ret <- rep(0, nrow(bed))
+		ret[ unlist(lapply( dat[[chr_id]], function(x) {  which(bed [,2] < x & bed[,3] > x) })) ] = 1
+		ret
+	}, chr_id )
+	names(add_ons) <- names(all_dat)
+	for ( i in 1:length(add_ons)) {
+		bed <- cbind (bed,add_ons[[i]])
+	}
+	colnames(bed) <- c( 'chromosome', 'start','end', 'sum', names(all_dat) )
+	bed
+}
+
 for ( i in  1:length(all_chr) ) {
-	bed <- rbind ( bed, all_beds[[i]] )
+	bed <- rbind ( bed, map_back( i, all_beds[[i]] ) )
+}
+
+if ( n[1] != 'chr1' ) {
+	 bed[,1] <- paste('chr',as.vector(bed[,1]),sep='')
 }
 
 bed <- bed[ - which( bed[,4] == '1'), ]
 
-write.table( bed, file='PeakRegions.bedGraph', sep='\t', quote=F, col.names=F, row.names=F )
+write.table( bed, file='PeakRegions.xls', sep='\t', quote=F, row.names=F )
+
+bed <- NULL
+for ( i in  1:length(all_chr) ) {
+	bed <- rbind ( bed, all_beds[[i]] )
+}
+if ( n[1] != 'chr1' ) {
+	 bed[,1] <- paste('chr',as.vector(bed[,1]),sep='')
+}
+write.table( bed, file='PeakRegions.bedGraph', sep='\t', col.names=F, quote=F, row.names=F )
+
 
 ";
 
