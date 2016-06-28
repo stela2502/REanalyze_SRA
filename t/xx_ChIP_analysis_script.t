@@ -122,7 +122,6 @@ is_deeply( $value->select_where( 'value', sub { shift > 100 } )->{'data'},
 
 $value = data_table->new(
 	{
-		'no_doubble_cross' => 1,
 		'filename' => "$plugin_path/data/output/ChIP_script/PeakRegions.xls"
 	}
 );
@@ -331,7 +330,6 @@ is_deeply( $value->select_where( 'value', sub { shift > 10 } )->{'data'},
 
 $value = data_table->new(
 	{
-		'no_doubble_cross' => 1,
 		'filename' => "$plugin_path/data/output/ChIP_script2/PeakRegions.xls"
 	}
 );
