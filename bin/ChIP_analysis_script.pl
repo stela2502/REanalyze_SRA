@@ -248,6 +248,7 @@ id4name <- function ( l, n ) {
 map_back <- function ( chr_name, bed_slice ) {
 	
 	add_ons <- lapply ( all_dat, function (dat, chr_name, bed_slice) {
+		print ( paste( Sys.time(), ': map_back chr',chr_name,' (count these lines for the number of samples processed)' ))
 		ret <- rep(0, nrow(bed_slice))
 		chr_id = id4name ( dat, chr_name )
 		if ( ! is.na( chr_id ) ) {
