@@ -41,7 +41,6 @@ Modify a sample table to (1) identify the column that links to a list of files a
 
 =cut
 
-
 =head1 METHODS
 
 =head2 new ( $hash )
@@ -51,101 +50,132 @@ All entries of the hash will be copied into the objects hash - be careful t use 
 
 =cut
 
-sub new{
+sub new {
 
 	my ( $class, $hash ) = @_;
 
-	my ( $self );
+	my ($self);
 
-	$self = {
-  	};
-  	foreach ( keys %{$hash} ) {
-  		$self-> {$_} = $hash->{$_};
-  	}
+	$self = {};
+	foreach ( keys %{$hash} ) {
+		$self->{$_} = $hash->{$_};
+	}
 
-  	bless $self, $class  if ( $class eq "stefans_libs::SampleTable" );
-	
-	Carp::confess ( "I need a {'data_table'=> \$obj} at stratup." ) unless ( ref($self->{'data_table'}) eq "data_table");
-	Carp::confess ( "I need a {'filenames'=> \$obj} at stratup." ) unless ( ref($self->{'filenames'}) eq "ARRAY");
-	
-  	return $self;
+	bless $self, $class if ( $class eq "stefans_libs::SampleTable" );
+
+	Carp::confess("I need a {'data_table'=> \$obj} at stratup.")
+	  unless ( ref( $self->{'data_table'} ) eq "data_table" );
+	Carp::confess("I need a {'filenames'=> \$obj} at stratup.")
+	  unless ( ref( $self->{'filenames'} ) eq "ARRAY" );
+
+	return $self;
 
 }
 
+sub pos_unique {
+	my ( $self, $col_id ) = @_;
+	my @pos =
+	  map { $self->to_file_pos($_) }
+	  @{ $self->{data_table}
+		  ->GetAsArray( @{ $self->{data_table}->{'header'} }[$col_id] )
+	  };
+	my $test;
+	foreach ( @pos ) {
+		next unless ( defined $_ );
+		return 0 if ( defined $test->{$_} );
+		$test->{$_} = 1;
+	}
+	return 1;
+}
 
-sub fix_the_table{
-	my ( $self, $fm , $data_table, $files) =@_;
-	$data_table = $self->_make_sure_internal($data_table, 'data_table');
-	$files  = $self->_make_sure_internal($files, 'filenames');
+sub fix_the_table {
+	my ( $self, $fm, $data_table, $files ) = @_;
+	$data_table = $self->_make_sure_internal( $data_table, 'data_table' );
+	$files      = $self->_make_sure_internal( $files,      'filenames' );
 	my @fileCols = $self->check_4_link2files( @{ $data_table->{'data'} }[0] );
 	my $i = 1;
 	while ( @fileCols == 0 ) {
-		@fileCols = $self->check_4_link2files( @{ $data_table->{'data'} }[$i++] );
+		@fileCols =
+		  $self->check_4_link2files( @{ $data_table->{'data'} }[ $i++ ] );
+		for ( my $i = @fileCols-1; $i >=0 ; $i -- ){
+			splice(@fileCols,$i, 1 ) unless ( $self->pos_unique($fileCols[$i]) );
+		}
 		last if ( $i == $data_table->Rows() );
 	}
-	unless ( @fileCols > 0 ){
-	Carp::confess(
-		"Sorry, but I could not link the samples table to the files you have given me!"
-			);
+
+	unless ( @fileCols > 0 ) {
+		Carp::confess(
+"Sorry, but I could not link the samples table to the files you have given me!"
+		);
 	}
 	if ( @fileCols > 1 ) {
 		warn
-	  	"I use the first file column @{$data_table->{'header'}}[$fileCols[0]]\n";
+"I use the first file column @{$data_table->{'header'}}[$fileCols[0]]\n";
 	}
 	$self->reorder_files( $data_table->GetAsArray( $fileCols[0] ) );
-	$data_table->add_column( 'filename', map { my $f = root->filemap($_); root->relative_path( $fm, $f )."/".$f->{'filename'} } @{$self->{'filenames'}} );
+	$data_table->add_column(
+		'filename',
+		map {
+			my $f = root->filemap($_);
+			root->relative_path( $fm, $f ) . "/" . $f->{'filename'}
+		  } @{ $self->{'filenames'} }
+	);
 	return $data_table, $fileCols[0];
 }
 
 sub _make_sure_internal {
 	my ( $self, $obj, $name ) = @_;
 	if ( ref($obj) =~ m/\w/ ) {
-		$self->{$name} = $obj; 
+		$self->{$name} = $obj;
 	}
 	return $self->{$name};
 }
 
-
 sub match_to_one_file {
-	my ($self, $data) = @_;
-	my $r    = 0;
-	foreach (@{$self->{'filenames'}}) {
+	my ( $self, $data ) = @_;
+	my $r = 0;
+	foreach ( @{ $self->{'filenames'} } ) {
 		$r++ if ( $_ =~ m/$data/ );
 	}
 	return $r == 1;
 }
 
 sub check_4_link2files {
-	my ($self,$array) = @_;
+	my ( $self, $array ) = @_;
 	grep /\d/,
 	  map { $_ if ( $self->match_to_one_file( @$array[$_] ) ) }
 	  0 .. ( scalar(@$array) - 1 );
 }
 
 sub to_file_pos {
-	my ( $self, $data )  = @_ ;
-	for ( my $i = 0 ; $i < @{$self->{'filenames'}} ; $i++ ) {
-		return $i if ( @{$self->{'filenames'}}[$i] =~ m/$data/ );
+	my ( $self, $data ) = @_;
+	for ( my $i = 0 ; $i < @{ $self->{'filenames'} } ; $i++ ) {
+		if ( @{ $self->{'filenames'} }[$i] =~ m/$data/ ) {
+			return $i;
+		}
 	}
-	warn "entry '$data' did not link to a file!";
+
+	#warn "entry '$data' did not link to a file!";
 	return undef;
 }
 
 sub reorder_files {
-	my ($self, $array)     = @_;
+	my ( $self, $array ) = @_;
 	my $data_table = $self->{'data_table'};
-	my @pos       = map { $self->to_file_pos($_) } @$array;
+	my @pos = map { $self->to_file_pos($_) } @$array;
 	my @undefined = grep ( /\d+/,
 		map {
 			if ( !defined( $pos[$_] ) ) { $_ }
 		} 0 .. $#pos );
 	foreach ( sort { $b <=> $a } @undefined ) {
-		warn "I have to drop the line $_ as no file corresponds to that id\n";
+
+		#warn "I have to drop the line $_ as no file corresponds to that id\n";
 		splice( @pos,                       $_, 1 );
 		splice( @{ $data_table->{'data'} }, $_, 1 )
 		  ;    ## drop the columns that have no file attached
 	}
-	$self->{'filenames'} = [@{$self->{'filenames'}}[@pos]];
+	warn "I have " . scalar(@pos) . " files left\n";
+	$self->{'filenames'} = [ @{ $self->{'filenames'} }[@pos] ];
 }
 
 sub is_complete {
@@ -160,6 +190,5 @@ sub uniqe {
 	my $d = { map { $_ => 1 } @$array };
 	return keys %$d;
 }
-
 
 1;

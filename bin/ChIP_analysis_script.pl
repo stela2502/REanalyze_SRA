@@ -161,7 +161,7 @@ $data_table->write_file("$fm->{'path'}/Samples.xls");
 
 my $Rfile = "library(data.table)\n";
 $Rfile .= "read_summit <- function ( file ) {\n\t"
-  . "print ( paste(Sys.time(), ': START' ))\n"
+  . "print ( paste(Sys.time(), ': START read file ', file ))\n"
   . "t <- read.delim( file=file, header=F )\n\t"
   . "ret <- list()\n\t"
   . "names<- unique(as.vector(t[,1]))\n\t"
@@ -176,6 +176,7 @@ $Rfile .= "read_summit <- function ( file ) {\n\t"
   
   ;
 
+#die "This has to be double and triple checked for missing values! What happens if one sample has no peak in one chromosome?\n";
 
 $Rfile .="
 all_chr <- list()
@@ -200,7 +201,9 @@ all_beds <- lapply(  1:length(all_chr), function ( i ) {
 	bed = NULL
 	start = 0
 	last = 1e+7
-	print ( paste(Sys.time(), ': working on file',i, samples[i,'filename']))
+	
+	print ( paste(Sys.time(), ': working on chr',i, names(all_chr)[i]))
+	
 	for ( v in data.table(x=all_chr[[i]],key='x')\$x ) {
 		if ( v - start > mdist ) {
 			if ( !is.null(bed) ) {
@@ -222,7 +225,7 @@ all_beds <- lapply(  1:length(all_chr), function ( i ) {
 names(all_beds) <- n
 
 save ( all_beds, file='all_beds.RData')
-
+print( paste( Sys.time(),': All bed files have been saved to R object all_beds.RData'))
 
 bed <- NULL
 for ( i in  1:length(all_chr) ) {
@@ -232,34 +235,43 @@ if ( n[1] != 'chr1' ) {
 	 bed[,1] <- paste('chr',as.vector(bed[,1]),sep='')
 }
 write.table( bed, file='PeakRegions.bedGraph', sep='\t', col.names=F, quote=F, row.names=F )
+print( paste( Sys.time(),': summary bed file has been saved to file PeakRegions.bedGraph'))
+
 
 bed <- NULL
 print ( paste(Sys.time(), ':Processing xls file output' ))
-map_back <- function ( chr_id, bed ) {
-	add_ons <- lapply ( all_dat, function (dat, chr_id) { 
-		ret <- rep(0, nrow(bed))
-		if ( ! is.null(dat[[chr_id]] ) ) {
-			ret[ unlist(lapply( dat[[chr_id]], function(x) {  which(bed [,2] < x & bed[,3] > x) })) ] = 1
+
+id4name <- function ( l, n ) {
+         match( n, names(l))
+}
+
+map_back <- function ( chr_name, bed_slice ) {
+	
+	add_ons <- lapply ( all_dat, function (dat, chr_name, bed_slice) {
+		ret <- rep(0, nrow(bed_slice))
+		chr_id = id4name ( dat, chr_name )
+		if ( ! is.na( chr_id ) ) {
+			ret[ unlist(lapply( dat[[chr_id]], function(x) {  which(bed_slice [,2] < x & bed_slice[,3] > x) })) ] = 1
 		}
 		ret
-	}, chr_id )
+	}, chr_name, bed_slice )
 	names(add_ons) <- names(all_dat)
 	for ( i in 1:length(add_ons)) {
-		bed <- cbind (bed,add_ons[[i]])
+		bed_slice <- cbind (bed_slice,add_ons[[i]])
 	}
-	colnames(bed) <- c( '#chromosome', 'start','end', 'sum', names(all_dat) )
-	bed
+	colnames(bed_slice) <- c( '#chromosome', 'start','end','sum', names(all_dat) )
+	bed_slice
 }
 
 for ( i in  1:length(all_chr) ) {
-	bed <- rbind ( bed, map_back( i, all_beds[[i]] ) )
+	bed <- rbind ( bed, map_back( n[i], all_beds[[i]] ) )
 }
 
 if ( n[1] != 'chr1' ) {
 	 bed[,1] <- paste('chr',as.vector(bed[,1]),sep='')
 }
 
-bed <- bed[ - which( bed[,4] == '1'), ]
+#bed <- bed[ - which( bed[,4] == '1'), ]
 
 write.table( bed, file='PeakRegions.xls', sep='\t', quote=F, row.names=F )
 print ( paste(Sys.time(), ': done' ))
