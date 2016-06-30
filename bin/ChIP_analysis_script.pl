@@ -165,7 +165,7 @@ $Rfile .= "read_summit <- function ( file ) {\n\t"
   . "t <- read.delim( file=file, header=F )\n\t"
   . "ret <- list()\n\t"
   . "names<- unique(as.vector(t[,1]))\n\t"
-  . "ret <- lapply( names, function ( x ) { as.vector(t[which(t[,1] == x ),2]) } )\n\t"
+  . "ret <- lapply( names, function ( x ) { t[which(t[,1] == x ),c(2,5)] } )\n\t"
   . "names(ret) <- names\n\t"
   . "ret\n}\n\n"
   . "samples <- read.delim( file='Samples.xls', header=T )\n"
@@ -184,10 +184,10 @@ for ( x in all_dat ) {
 	n <- names(x)
 	for ( i in 1:length(n) ) { 
 		if (  length( (id = match( n[i], names(all_chr) ) ) ) == 0 || is.na(id) ) {
-			all_chr[[length(all_chr)+1]] <- x[[i]]
+			all_chr[[length(all_chr)+1]] <- x[[i]][,1]
 			names(all_chr)[length(all_chr)] = n[i]
 		}else{
-			all_chr[[id]]<- c( all_chr[[id]], x[[i]] )
+			all_chr[[id]]<- c( all_chr[[id]], x[[i]][,1] )
 		}
 	}
 }
@@ -246,26 +246,38 @@ id4name <- function ( l, n ) {
 }
 
 map_back <- function ( chr_name, bed_slice ) {
-	
-	add_ons <- lapply ( all_dat, function (dat, chr_name, bed_slice) {
-		print ( paste( Sys.time(), ': map_back chr',chr_name,' (count these lines for the number of samples processed)' ))
-		ret <- rep(0, nrow(bed_slice))
-		chr_id = id4name ( dat, chr_name )
-		if ( ! is.na( chr_id ) ) {
-			ret[ unlist(lapply( dat[[chr_id]], function(x) {  which(bed_slice [,2] < x & bed_slice[,3] > x) })) ] = 1
+	if ( ! is.na(bed_slice)) {
+		add_ons <- lapply ( all_dat, 
+		function (dat, chr_name, bed_slice) {
+			print ( paste( Sys.time(), ': map_back chr',chr_name,' (count these lines for the number of samples processed)' ))
+			ret <- rep(0, nrow(bed_slice))
+			chr_id = id4name ( dat, chr_name )
+			if ( ! is.na( chr_id ) ) {
+				ret[ unlist(lapply( dat[[chr_id]][,1], 
+				function(x) { 
+					which(bed_slice[,2] < x & bed_slice[,3] > x) 
+				}
+				)) ] = dat[[chr_id]][,2]
+				#browser()
+			}
+			ret
+		}, chr_name, bed_slice )
+		names(add_ons) <- names(all_dat)
+		for ( i in 1:length(add_ons)) {
+			bed_slice <- cbind (bed_slice,add_ons[[i]])
 		}
-		ret
-	}, chr_name, bed_slice )
-	names(add_ons) <- names(all_dat)
-	for ( i in 1:length(add_ons)) {
-		bed_slice <- cbind (bed_slice,add_ons[[i]])
+		colnames(bed_slice) <- c( '#chromosome', 'start','end','sum', names(all_dat) )
 	}
-	colnames(bed_slice) <- c( '#chromosome', 'start','end','sum', names(all_dat) )
 	bed_slice
 }
 
 for ( i in  1:length(all_chr) ) {
-	bed <- rbind ( bed, map_back( n[i], all_beds[[i]] ) )
+	if ( !is.null(all_beds[[i]] ) ) {
+        t <- map_back( n[i], all_beds[[i]] )
+        if ( ! is.na( t )) {
+                bed <- rbind ( bed, map_back( n[i], all_beds[[i]] ) )
+        }
+	}
 }
 
 if ( n[1] != 'chr1' ) {
