@@ -36,6 +36,7 @@ sub new {
 
 	$self = {
 		'tables_lastID' => {},
+		'values' => [],
 		'tables'        => {},
 		'deparse_level' => 2,
 		'drop_first'    => 2,
@@ -44,9 +45,6 @@ sub new {
 	};
 
 	bless $self, $class if ( $class eq "stefans_libs::XML_parser" );
-	foreach ( 'deparse_level', 'drop_first' ) {
-		$self->{$_} = $hash->{$_} if ( defined $hash->{$_} );
-	}
 	foreach ( keys %$hash ) {
 		$self->{$_} = $hash->{$_};
 	}
@@ -475,6 +473,10 @@ sub parse_NCBI {
 	$entryID  ||= 1;
 	$new_line ||= 0;
 	$area     ||= '';
+	if ( $self->{'debug'}) {
+		print "The actual entryID: $entryID\n";
+		return if ( $entryID >= 2 );
+	}
 	my ( $str, $keys, $delta, $tmp, @tmp );
 	foreach ( @{ $options->{'ignore'} } ) {
 		return $delta if ( $area =~ m/$_/ );

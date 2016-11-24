@@ -125,7 +125,7 @@ sub helpString {
  command line switches for XML_parser.pl
 
    -infile    :the infile for the conversion
-   -outfile   :the outfile base for the tables
+   --   :the outfile base for the tables
    -options 
    		NCBI_ID 'some SRA ID'  
    		      :The information for this ID id is downloaded 
