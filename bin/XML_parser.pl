@@ -30,8 +30,6 @@ use warnings;
 use XML::Simple;
 use FindBin;
 
-use Data::Dumper;
-
 use stefans_libs::XML_parser;
 
 my $plugin_path = "$FindBin::Bin";
