@@ -467,9 +467,22 @@ sub drop_duplicates {
 	return $self;
 }
 
+sub options{
+	my ( $self, $name, $replacement ) = @_;
+	if ( ref($name) eq "HASH" and ! defined $self->{'options'} ){
+		$self->{'options'} = $name;
+	}elsif (defined $name ) {
+		if ( defined $replacement) {
+			$self->{'options'}->{$name} = $replacement;
+		}
+		return $self->{'options'}->{$name};
+	}
+	return $self->{'options'};
+}
+
 
 sub parse_NCBI {
-	my ( $self, $hash, $area, $entryID, $new_line, $options ) = @_;
+	my ( $self, $hash, $area, $entryID, $new_line ) = @_;
 	$entryID  ||= 1;
 	$new_line ||= 0;
 	$area     ||= '';
@@ -478,9 +491,6 @@ sub parse_NCBI {
 		return if ( $entryID >= 2 );
 	}
 	my ( $str, $keys, $delta, $tmp, @tmp );
-	foreach ( @{ $options->{'ignore'} } ) {
-		return $delta if ( $area =~ m/$_/ );
-	}
 	$delta = 0;
 	if ( ref($hash) eq "ARRAY" ) {
 		foreach (@$hash) {
@@ -490,14 +500,14 @@ sub parse_NCBI {
 	}
 	elsif ( ref($hash) eq "HASH" ) {
 		$str = lc( join( " ", sort keys %$hash ) );
-		if ( defined $options->{'inspect'} ) {
-			$options->{'inspect'} = lc( $options->{'inspect'} );
+		if ( defined $self->options('inspect') ) {
+			$self->options('inspect', lc( $self->options('inspect') ));
 			if (
 				join( " ", lc( values %$hash ), $str ) =~
-				m/$options->{'inspect'}/ )
+				m/$self->options('inspect')/ )
 			{
 				$self->print_and_die( $hash,
-					"You have searched for the sring '$options->{'inspect'}':\n"
+					"You have searched for the string '".$self->options('inspect')."':\n"
 				);
 			}
 		}
@@ -535,12 +545,26 @@ sub parse_NCBI {
 				} keys %$hash
 			  )
 			{
+				if ( defined $self->options('useOnly') ) {
+					unless ( lc($key) eq $key){
+					unless ( $self->options('useOnly')->{$key}) {
+						warn "I skipp the key '$key'\n";
+						return $delta;
+					}
+					}
+				}
+				if ( defined $self->options('ignore')){
+					if ( $self->options('ignore')->{$key}) {
+						warn "I skipp the key '$key'\n";
+						return $delta;
+					}
+				}
 				$hash->{$key} =~ s/\s+/ /g;
 				print "$key  =>  $hash->{$key} on line $entryID\n"
 				  if ( $self->{'debug'} and $tmp++ == 0 );
 				## this might need a new line, but that is not 100% sure!
 				$str = 0;
-				foreach ( @{ $options->{'addMultiple'} } ) {
+				foreach ( @{ $self->options('addMultiple') } ) {
 					if ( $key =~ m/$_/ ) {
 						$delta =
 						  $self->parse_NCBI( $hash->{$key}, "$area-$key",
@@ -567,7 +591,7 @@ sub parse_NCBI {
 
 #		return 0 if ( defined $values -> { $hash } ) ;
 #		as the new column might come from a new hash, that might need merging to the last line - check that!
-		foreach ( @{ $options->{'addMultiple'} } ) {
+		foreach ( @{ $self->options('addMultiple') } ) {
 			if ( $area =~ m/$_/ ) {
 				$delta = $self->register_column( $area, $hash, $entryID, 0 );
 			}

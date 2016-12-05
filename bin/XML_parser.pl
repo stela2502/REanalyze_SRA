@@ -56,32 +56,23 @@ my $error = '';
 my $options;
 
 if ( defined $options[0] ) {
+	my $split_this = { map{ $_ => 1 } 'ignore', 'addMultiple', 'useOnly'};
 	for ( my $i = 0 ; $i < @options ; $i += 2 ) {
-		if ( $options[$i] eq "ignore" ) {
-			$options->{ $options[$i] } ||= [];
+		if ( $split_this->{$options[$i]} ) {
 			$options->{ $options[$i] } = [
-				split(
-					" ",
-					$options[ $i + 1 ]
-					  . join( " ", @{ $options->{ $options[$i] } } )
-				)
-			];
-		}
-		elsif ( $options[$i] eq 'addMultiple' ) {
-			$options->{ $options[$i] } ||= [];
-			$options->{ $options[$i] } = [
-				split(
-					" ",
-					$options[ $i + 1 ]
-					  . join( " ", @{ $options->{ $options[$i] } } )
-				)
+				split(" ", $options[ $i + 1 ] )
 			];
 		}
 		else {
 			$options->{ $options[$i] } = $options[ $i + 1 ];
 		}
 	}
+	foreach ( 'useOnly', 'ignore') {
+		$options->{$_} = {map { $_ => 1} @{$options->{$_}} } if ( ref($options->{$_}) eq "ARRAY" );
+	}
 }
+$options->{'ignore'} ||= [];
+$options->{'addMultiple'} ||= [];
 
 if ( defined $options->{'NCBI_ID'} ) {
 	unless ( -f $infile ) {
@@ -130,6 +121,8 @@ sub helpString {
    		       from NCBI and stored in the input file
    		ignore 'table1 table2 table3'
    			  :is ignoring these tables 'SPOT_DESCRIPTOR'
+   		useOnly 'EXPERIMENT_PACKAGE_SET EXPERIMENT_PACKAGE EXPERIMENT IDENTIFIERS TITLE'
+   		      :dropps all other XML entries but the mentioned
    		addMultiple 'colname1 colname2 colname3'
    			  :there are multiple coumns of this type allowed per line
    		inspect 'string'
@@ -150,6 +143,11 @@ $task_description .= " -outfile $outfile" if ( defined $outfile );
 $task_description .= " -options '" . join( "' '", @options ) . "'"
   if ( defined $options[0] );
 
+my $fm = root->filemap( $outfile );
+unless ( -d $fm->{'path'} ) {
+	mkdir( $fm->{'path'});
+}
+
 open( LOG, ">$outfile.log" ) or die $!;
 print LOG $task_description . "\n";
 close(LOG);
@@ -160,6 +158,8 @@ my $xml = XMLin($infile);
 #print XMLout( $xml );
 
 my $IDS = stefans_libs::XML_parser->new( { debug => $debug } );
+
+$IDS->options( $options );
 
 $debug = 0;
 my $main_id = 1;

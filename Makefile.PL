@@ -12,6 +12,7 @@ author 'Stefan Lang <Stefan.Lang@med.lu.se>';
 requires	'Stefans_Libs_Essentials' => 1.02;
 requires 'stefans_libs-GenomeDB' => 0.1;
 requires		'XML::Simple' => 0;
+requires 'Parallel::ForkManager' => 0;
 
 
 opendir( DIR, "bin/" ) or die "I could not open the bin folder\n$!\n";
