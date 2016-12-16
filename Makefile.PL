@@ -9,8 +9,8 @@ name "REanalyze_SRA";
 version_from "lib/REanalyze_SRA.pm";
 author 'Stefan Lang <Stefan.Lang@med.lu.se>';
 
-requires	'Stefans_Libs_Essentials' => 1.02;
-requires 'stefans_libs-GenomeDB' => 0.1;
+#requires	'Stefans_Libs_Essentials' => 1.02;
+#requires 'stefans_libs-GenomeDB' => 0.1;
 requires		'XML::Simple' => 0;
 requires 'Parallel::ForkManager' => 0;
 
