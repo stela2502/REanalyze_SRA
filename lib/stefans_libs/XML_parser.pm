@@ -82,7 +82,9 @@ sub table_and_colname {
 
 sub col_id_4_entry {
 	my ( $self, $data_table, $column, $value, $entryID, $new_line ) = @_;
-
+	if ($value =~ m/^(\w\d+)_r1$/ ) {
+		$value = $1;
+	}
 	my ($pos) = $data_table->Header_Position($column);
 	if ( !defined $pos ) {
 		($pos) = $data_table->Add_2_Header($column);
@@ -119,6 +121,9 @@ sub col_id_4_entry {
 
 sub add_if_empty {
 	my ( $self, $orig_column, $value, $entryID ) = @_;
+	if ($value =~ m/^(\w\d+)_r1$/ ) {
+		$value = $1;
+	}
 	my ( $data_table, $column ) =
 	  $self->table_and_colname( $orig_column, $entryID );
 	$entryID = $data_table->Rows();
@@ -133,6 +138,9 @@ sub add_if_empty {
 
 sub add_if_unequal {
 	my ( $self, $orig_column, $value, $entryID ) = @_;
+	if ($value =~ m/^(\w\d+)_r1$/ ) {
+		$value = $1;
+	}
 	my ( $data_table, $column ) =
 	  $self->table_and_colname( $orig_column, $entryID );
 	$entryID = $data_table->Rows();
@@ -164,6 +172,9 @@ sub add_if_unequal {
 sub register_column {
 	my ( $self, $orig_column, $value, $entryID, $new_line, $prohibitDeepRec ) =
 	  @_;
+	if ($value =~ m/^(\w\d+)_r1$/ ) {
+		$value = $1;
+	}
 	$new_line        ||= 0;
 	$prohibitDeepRec ||= 0;
 	my ( $data_table, $pos, $delta, $column );

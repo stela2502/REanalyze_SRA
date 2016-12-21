@@ -20,12 +20,12 @@
 =head1  SYNOPSIS
 
     quantify_single_cell_NGS.pl
-       -bams    :a list of bam files
-       -gtf     :the gtf file to use
-       -outfile :the final StefansExpressionSet file
-
-       -help    :print this help
-       -debug   :verbose output
+       -bams     :a list of bam files
+       -gtf      :the gtf file to use
+       -outfile  :the final StefansExpressionSet file
+       -tmp_path :the temp path (default tmp in the outfiles's path)
+       -help     :print this help
+       -debug    :verbose output
        
        ## options for the Rsubread::featureCounts call
        
@@ -57,138 +57,189 @@ my $plugin_path = "$FindBin::Bin";
 
 my $VERSION = 'v1.0';
 
-
-my ( $help, $debug, $database, @bams, $gtf, $gtf_feature_type, $gtf_attr_type, $paired, $n, $outfile);
+my ( $help, $debug, $database, @bams, $gtf, $tmp_path, $gtf_feature_type,
+	$gtf_attr_type, $paired, $n, @slurm, $outfile );
 
 Getopt::Long::GetOptions(
-       "-bams=s{,}"    => \@bams,
-	 "-gtf=s"    => \$gtf,
-	 "-gtf_feature_type=s"    => \$gtf_feature_type,
-	 "-gtf_attr_type=s"    => \$gtf_attr_type,
-       "-paired"    => \$paired,
-	 "-n=s"    => \$n,
-	 "-outfile=s"    => \$outfile,
+	"-bams=s{,}"          => \@bams,
+	"-gtf=s"              => \$gtf,
+	"-gtf_feature_type=s" => \$gtf_feature_type,
+	"-gtf_attr_type=s"    => \$gtf_attr_type,
+	"-paired"             => \$paired,
+	"-n=s"                => \$n,
+	"-outfile=s"          => \$outfile,
+	"-tmp_path=s"         => \$tmp_path,
+	"-slurm=s{,}"          => \@slurm,
 
-	 "-help"             => \$help,
-	 "-debug"            => \$debug
+	"-help"  => \$help,
+	"-debug" => \$debug
 );
 
-my $warn = '';
+my $warn  = '';
 my $error = '';
 
-unless ( -f $bams[0]) {
+unless ( -f $bams[0] ) {
 	$error .= "the cmd line switch -bams is undefined!\n";
 }
-unless ( -f $gtf) {
+unless ( -f $gtf ) {
 	$error .= "the cmd line switch -gtf is undefined!\n";
 }
-unless ( defined $gtf_feature_type) {
+unless ( defined $gtf_feature_type ) {
 	$gtf_feature_type = 'exon';
 }
-unless ( defined $gtf_attr_type) {
+unless ( defined $gtf_attr_type ) {
 	$gtf_attr_type = 'gene_id';
 }
+
 # paired - no checks necessary
-unless ( defined $n) {
+unless ( defined $n ) {
 	$n = 2;
 }
-unless ( defined $outfile) {
+unless ( defined $tmp_path ) {
+	$tmp_path = 'tmp';
+}
+unless ( defined $outfile ) {
 	$error .= "the cmd line switch -outfile is undefined!\n";
 }
 
-map{ $warn .= "file $_ must not be given as relative path!\n" if ( $_ =~ m/^\./) } @bams;
+map {
+	$warn .= "file $_ must not be given as relative path!\n"
+	  if ( $_ =~ m/^\./ )
+} @bams;
 
-if ( $help ){
-	print helpString( ) ;
+if ($help) {
+	print helpString();
 	exit;
 }
 
-if ( $error =~ m/\w/ ){
-	helpString($error ) ;
+if ( $error =~ m/\w/ ) {
+	helpString($error);
 	exit;
 }
 
 sub helpString {
 	my $errorMessage = shift;
-	$errorMessage = ' ' unless ( defined $errorMessage); 
+	$errorMessage = ' ' unless ( defined $errorMessage );
 	print "$errorMessage.\n";
-	pod2usage(q(-verbose) => 1);
+	pod2usage( q(-verbose) => 1 );
 }
 
+my ($task_description);
 
+$task_description .= 'perl ' . $plugin_path . '/quantify_single_cell_NGS.pl';
+$task_description .= ' -bams "' . join( '" "', @bams ) . '"'
+  if ( defined $bams[0] );
+$task_description .= " -gtf '$gtf'" if ( defined $gtf );
+$task_description .= " -gtf_feature_type '$gtf_feature_type'"
+  if ( defined $gtf_feature_type );
+$task_description .= " -gtf_attr_type '$gtf_attr_type'"
+  if ( defined $gtf_attr_type );
+$task_description .= " -paired " if ($paired);
+$task_description .= " -n '$n'"  if ( defined $n );
+$task_description .= " -tmp_path '$tmp_path'" unless ( $tmp_path eq "tmp" );
+$task_description .= " -outfile '$outfile'" if ( defined $outfile );
 
-my ( $task_description);
+my $fm = root->filemap($outfile);
 
-$task_description .= 'perl '.$plugin_path .'/quantify_single_cell_NGS.pl';
-$task_description .= ' -bams "'.join( '" "', @bams ).'"' if ( defined $bams[0]);
-$task_description .= " -gtf '$gtf'" if (defined $gtf);
-$task_description .= " -gtf_feature_type '$gtf_feature_type'" if (defined $gtf_feature_type);
-$task_description .= " -gtf_attr_type '$gtf_attr_type'" if (defined $gtf_attr_type);
-$task_description .= " -paired " if ( $paired);
-$task_description .= " -n '$n'" if (defined $n);
-$task_description .= " -outfile '$outfile'" if (defined $outfile);
-
-
-my $fm = root->filemap( $outfile );
 unless ( -d $fm->{'path'} ) {
-	mkdir ( $fm->{'path'} );
-}
-unless ( -d "$fm->{'path'}/tmp/" ){
-	mkdir ("$fm->{'path'}/tmp/" );
+	mkdir( $fm->{'path'} );
 }
 
-open ( LOG , ">$outfile.log") or die $!;
-print LOG $task_description."\n";
-close ( LOG );
+if ( $tmp_path eq "tmp" ) {
+	$tmp_path = "$fm->{'path'}/tmp/";
+}
+unless ( -d $tmp_path ) {
+	mkdir($tmp_path);
+}
 
+open( LOG, ">$outfile.log" ) or die $!;
+print LOG $task_description . "\n";
+close(LOG);
 
 ## Do whatever you want!
-my ( $max);
+my ($max);
 my $a = 1;
-if ( $paired ){
+if ($paired) {
 	$paired = "T";
-}else {
+}
+else {
 	$paired = "F";
 }
-for (my $i = 0; $i < @bams; $i +=500 ) {
-	open ( OUT, ">$fm->{'path'}/tmp/bams.$a.txt" ) or die "I could not create the bam file '$fm->{'path'}/tmp/bams.$a.txt'\n$!\n";
+my $slurm;
+if (@slurm) {
+	use stefans_libs::SLURM;
+	for ( my $i = 0 ; $i < @slurm ; $i += 2 ) {
+		$slurm->{ $slurm[$i] } = $slurm[ $i + 1 ];
+	}
+	$slurm->{'n'} = $n;
+	$slurm->{'N'} = 1 unless( $slurm->{'N'});
+	$slurm->{'debug'} = $debug;
+	$slurm = stefans_libs::SLURM->new($slurm);
+}
+
+for ( my $i = 0 ; $i < @bams ; $i += 500 ) {
+	open( OUT, ">$tmp_path/bams.$a.txt" )
+	  or die "I could not create the bam file '$tmp_path/bams.$a.txt'\n$!\n";
 	$max = $i + 499;
 	$max = $#bams if ( $max > $#bams );
-	print OUT join("\n", map { if ( $_ =~ m/^\./){ "../$_"} else { $_ } } @bams[$i..$max]);
-	close ( OUT );
-	open( SCR, ">$fm->{'path'}/tmp/quantify.$a.R" ) or die "I could not create the script file '$fm->{'path'}/tmp/script.$a.R'\n$!\n";
-	print SCR join("\n", 
+	print OUT join(
+		"\n",
+		map {
+			if   ( $_ =~ m/^\./ ) { "../$_" }
+			else                  { $_ }
+		} @bams[ $i .. $max ]
+	);
+	close(OUT);
+	open( SCR, ">$tmp_path/quantify.$a.R" )
+	  or die "I could not create the script file '$tmp_path/script.$a.R'\n$!\n";
+	print SCR join(
+		"\n",
 		"library( StefansExpressionSet)",
 		"library(Rsubread)",
-		"dat$a <- read.bams( '$fm->{'path'}/tmp/bams.$a.txt', '$gtf', nthreads =  $n, GTF.featureType = '$gtf_feature_type',
+"dat$a <- read.bams( '$tmp_path/bams.$a.txt', '$gtf', nthreads =  $n, GTF.featureType = '$gtf_feature_type',
 					GTF.attrType = '$gtf_attr_type',isPairedEnd = $paired )",
-		"save(dat$a, file='$fm->{'path'}/tmp/Robject$a.RData')",
+		"save(dat$a, file='$tmp_path/Robject$a.RData')",
+		"system('touch $tmp_path/Robject$a.RData.finished')"
 	);
-	close ( SCR );
-	if ( ! -f "$fm->{'path'}/tmp/Robject$a.RData") {
-		print "creating Robject$a.RData\n";
-		system( "R CMD BATCH $fm->{'path'}/tmp/quantify.$a.R" ) unless ( $debug);
-	}else {
-		print "outfile $fm->{'path'}/tmp/Robject$a.RData does exist\n";
+	close(SCR);
+	if ( !-f "$tmp_path/Robject$a.RData" ) {
+		if (@slurm) {
+				$slurm->run( "R CMD BATCH $tmp_path/quantify.$a.R", root->filemap("$tmp_path/Robject$a.RData") );
+		}else{
+			print "creating Robject$a.RData\n";
+			system("R CMD BATCH $tmp_path/quantify.$a.R") unless ($debug);
+		}
+	}
+	else {
+		print "outfile $tmp_path/Robject$a.RData does exist\n";
 	}
 	$a++;
 }
 $a--;
 
-open( SCR, ">$fm->{'path'}/tmp/sumup.R" ) or die "I could not create the script file '$fm->{'path'}/tmp/sumup.R'\n$!\n";
-my @files = map{"$fm->{'path'}/tmp/Robject$_.RData" } 1..$a;
-print SCR join("\n",
-	"counts <- NULL",
-	"load('$fm->{'path'}/tmp/Robject1.RData')\n","counts <- dat1",
-	(map{ "load('$fm->{'path'}/tmp/Robject$_.RData')\ncounts <- cbind(counts, dat$_"."[,-c(1:6)])" } 2..$a ),
-	"save(counts, file='$outfile')",
-	
+open( SCR, ">$tmp_path/sumup.R" )
+  or die "I could not create the script file '$tmp_path/sumup.R'\n$!\n";
+my @files = map { "$tmp_path/Robject$_.RData" } 1 .. $a;
+print SCR join(
+	"\n",
+	(map{ "if ( ! file.exists( '$tmp_path/Robject$_.RData.finished' ) ) { Sys.sleep(10) }" } 1..$a),
+	"load('$tmp_path/Robject1.RData')\n",
+	"dat <- dat1",
+	(
+		map {
+			my $id = $_;
+			join( "\n",
+				"load('$tmp_path/Robject$id.RData')",
+				"dat\$counts <- cbind(dat\$counts, dat$id\$counts )",
+				"dat\$stat <- cbind(dat\$stat, dat$id\$stat[,-1] )" )
+		} 2 .. $a
+	),
+	"save(dat, file='$outfile')",
 );
-close ( SCR );
+close(SCR);
 
-system( "R CMD BATCH $fm->{'path'}/tmp/sumup.R" ) unless ( $debug);
+system("R CMD BATCH $tmp_path/sumup.R") unless ($debug);
 
-print "The file '$outfile' should now contain a R table object that can be further processed in any R script\n";
-
-
+print
+"The file '$outfile' should now contain a R table object that can be further processed in any R script\n";
 
