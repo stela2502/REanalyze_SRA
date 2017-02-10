@@ -24,6 +24,9 @@
        -gtf      :the gtf file to use
        -outfile  :the final StefansExpressionSet file
        -tmp_path :the temp path (default tmp in the outfiles's path)
+       -amount   :the max amount of bam files quantified with one process (default =500)
+       -IDXstats :the outfile from IDXstats_4_bams.pl script
+       
        -help     :print this help
        -debug    :verbose output
        
@@ -35,6 +38,10 @@
                 :the attributeType (default = gene_id)
        -paired  :is the data paried
        -n       :how many processes to read the data (for the R process)
+       
+       ## options for the slurm batch process
+       
+       -slurm A lu2016-2-7 N 1 t 02:00:00
    
 =head1 DESCRIPTION
 
@@ -57,8 +64,9 @@ my $plugin_path = "$FindBin::Bin";
 
 my $VERSION = 'v1.0';
 
-my ( $help, $debug, $database, @bams, $gtf, $tmp_path, $gtf_feature_type,
-	$gtf_attr_type, $paired, $n, @slurm, $outfile );
+my ( $help, $debug, $database, @bams, $gtf, $tmp_path, $amount,
+	$gtf_feature_type,
+	$gtf_attr_type, $paired, $n, @slurm, $IDXstats, $outfile );
 
 Getopt::Long::GetOptions(
 	"-bams=s{,}"          => \@bams,
@@ -66,10 +74,12 @@ Getopt::Long::GetOptions(
 	"-gtf_feature_type=s" => \$gtf_feature_type,
 	"-gtf_attr_type=s"    => \$gtf_attr_type,
 	"-paired"             => \$paired,
+	"-amount=s"           => \$amount,
 	"-n=s"                => \$n,
 	"-outfile=s"          => \$outfile,
 	"-tmp_path=s"         => \$tmp_path,
-	"-slurm=s{,}"          => \@slurm,
+	"-slurm=s{,}"         => \@slurm,
+	"-IDXstats=s"         => \$IDXstats,
 
 	"-help"  => \$help,
 	"-debug" => \$debug
@@ -86,6 +96,9 @@ unless ( -f $gtf ) {
 }
 unless ( defined $gtf_feature_type ) {
 	$gtf_feature_type = 'exon';
+}
+unless ( defined $amount ) {
+	$amount = 500;
 }
 unless ( defined $gtf_attr_type ) {
 	$gtf_attr_type = 'gene_id';
@@ -138,6 +151,7 @@ $task_description .= " -paired " if ($paired);
 $task_description .= " -n '$n'"  if ( defined $n );
 $task_description .= " -tmp_path '$tmp_path'" unless ( $tmp_path eq "tmp" );
 $task_description .= " -outfile '$outfile'" if ( defined $outfile );
+$task_description .= " -amount $amount";
 
 my $fm = root->filemap($outfile);
 
@@ -156,6 +170,43 @@ open( LOG, ">$outfile.log" ) or die $!;
 print LOG $task_description . "\n";
 close(LOG);
 
+unless ( -f $IDXstats ) {
+	$IDXstats = "$fm->{'path'}/$fm->{'filename_base'}_IDXstats.xls";
+	$IDXstats =~ s!//!/!g;
+	my $cmd =
+	    "IDXstats_4_bams.pl -bams '"
+	  . join( "' '", @bams )
+	  . "' -outfile $IDXstats -n $n";
+	print
+"As I did not get the IDXstats summary file I will create one($IDXstats)\n$cmd\n";
+	system($cmd );
+}
+
+## convert the IDX stats into a usable R object
+
+my $failedCellsRobj = "$fm->{'path'}/FailedSamples.RData";
+
+unless ( -f $failedCellsRobj ) {
+	open( RSCRIPT, ">$fm->{'path'}/idxstats2failedSamples.R" )
+	  or die
+"I could not create the checkup R script '$fm->{'path'}/idxstats2failedSamples.R'\n$!\n";
+
+	print RSCRIPT "library(stringr)
+t <- read.delim('$IDXstats')
+FailedSamples <- as.character(
+   t[
+        which(is.na(apply( t, 1, function(x) { sum(as.numeric(x[grep ('chr[XY1-9][1-9]*$',colnames(t))]))}))==T)
+        ,1
+   ]
+)
+names(FailedSamples) <- str_extract( FailedSamples, 'SRR\\d*')
+save(FailedSamples,file='$failedCellsRobj' )
+";
+	close(RSCRIPT);
+
+	system("R CMD BATCH $fm->{'path'}/idxstats2failedSamples.R");
+}
+
 ## Do whatever you want!
 my ($max);
 my $a = 1;
@@ -171,30 +222,31 @@ if (@slurm) {
 	for ( my $i = 0 ; $i < @slurm ; $i += 2 ) {
 		$slurm->{ $slurm[$i] } = $slurm[ $i + 1 ];
 	}
-	$slurm->{'n'} = $n;
-	$slurm->{'N'} = 1 unless( $slurm->{'N'});
+	$slurm->{'n'}     = $n;
+	$slurm->{'N'}     = 1 unless ( $slurm->{'N'} );
 	$slurm->{'debug'} = $debug;
-	$slurm = stefans_libs::SLURM->new($slurm);
+	$slurm->{'A'} ||= 'lu2016-2-7';
+	$slurm->{'SLURM_modules'} = ['ifort/2016.1.150-GCC-4.9.3-2.25',  'impi/5.1.2.150', 'R/3.2.3-libX11-1.6.3'];
+	$slurm            = stefans_libs::SLURM->new($slurm);
 }
 
-for ( my $i = 0 ; $i < @bams ; $i += 500 ) {
+for ( my $i = 0 ; $i < @bams ; $i += $amount ) {
 	open( OUT, ">$tmp_path/bams.$a.txt" )
 	  or die "I could not create the bam file '$tmp_path/bams.$a.txt'\n$!\n";
-	$max = $i + 499;
+	$max = $i + $amount - 1;
 	$max = $#bams if ( $max > $#bams );
 	print OUT join(
 		"\n",
 		map {
-			if   ( $_ =~ m/^\./ ) { "../$_" }
-			else                  { $_ }
+			root->filemap($_)->{'total'};
 		} @bams[ $i .. $max ]
-	);
+	)."\n";
 	close(OUT);
 	open( SCR, ">$tmp_path/quantify.$a.R" )
 	  or die "I could not create the script file '$tmp_path/script.$a.R'\n$!\n";
 	print SCR join(
 		"\n",
-		"library( StefansExpressionSet)",
+		"#library( StefansExpressionSet)", &read_bams_R(),
 		"library(Rsubread)",
 "dat$a <- read.bams( '$tmp_path/bams.$a.txt', '$gtf', nthreads =  $n, GTF.featureType = '$gtf_feature_type',
 					GTF.attrType = '$gtf_attr_type',isPairedEnd = $paired )",
@@ -204,8 +256,12 @@ for ( my $i = 0 ; $i < @bams ; $i += 500 ) {
 	close(SCR);
 	if ( !-f "$tmp_path/Robject$a.RData" ) {
 		if (@slurm) {
-				$slurm->run( "R CMD BATCH $tmp_path/quantify.$a.R", root->filemap("$tmp_path/Robject$a.RData") );
-		}else{
+			$slurm->run(
+				"R CMD BATCH $tmp_path/quantify.$a.R",
+				root->filemap("$tmp_path/Robject$a.RData")
+			);
+		}
+		else {
 			print "creating Robject$a.RData\n";
 			system("R CMD BATCH $tmp_path/quantify.$a.R") unless ($debug);
 		}
@@ -222,7 +278,11 @@ open( SCR, ">$tmp_path/sumup.R" )
 my @files = map { "$tmp_path/Robject$_.RData" } 1 .. $a;
 print SCR join(
 	"\n",
-	(map{ "if ( ! file.exists( '$tmp_path/Robject$_.RData.finished' ) ) { Sys.sleep(10) }" } 1..$a),
+	(
+		map {
+"if ( ! file.exists( '$tmp_path/Robject$_.RData.finished' ) ) { Sys.sleep(10) }"
+		} 1 .. $a
+	),
 	"load('$tmp_path/Robject1.RData')\n",
 	"dat <- dat1",
 	(
@@ -243,3 +303,26 @@ system("R CMD BATCH $tmp_path/sumup.R") unless ($debug);
 print
 "The file '$outfile' should now contain a R table object that can be further processed in any R script\n";
 
+sub read_bams_R {
+	return
+	  "read.bams <- function ( bamFiles, annotation, GTF.featureType='exon', 
+		GTF.attrType = 'gene_id', isPairedEnd = FALSE, nthreads = 2, as.obj=F) {
+	if (file.exists(bamFiles)){
+		bamFiles <- readLines(bamFiles)
+	}
+	if (file.exists('$failedCellsRobj') ){ # not necessary?
+		#load('$failedCellsRobj') 
+	}
+
+	counts <- featureCounts(files =bamFiles,annot.ext = annotation ,isGTFAnnotationFile = TRUE,GTF.featureType = GTF.featureType,
+		GTF.attrType = GTF.attrType,allowMultiOverlap=T, isPairedEnd =isPairedEnd , nthreads = nthreads)
+	save(counts, file='count_object.RData' )
+	if ( ! as.obj ) {
+		counts
+	}else {
+		counts.tab <- cbind(counts\$annotation,counts\$counts)  # combine the annotation and counts
+		counts.tab
+	}
+}
+"
+}

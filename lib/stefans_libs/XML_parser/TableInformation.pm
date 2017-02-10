@@ -81,6 +81,11 @@ sub _is_acc {
 
 sub check_4_acc {
 	my ( $self, $array ) = @_;
+	if ( @$array[0] =~ m/[[:alpha:]][[:alpha:]][[:alpha:]]+\d\d\d+_r1/ ) {
+		for ( my $i = 0; $i <@$array; $i++ ){
+			@$array[$i] =~ s/_r1//;
+		}
+	}
 	grep /\d/,
 	  map { $_ if ( $self->is_acc( @$array[$_] ) ) }
 	  0 .. ( scalar(@$array) - 1 );
@@ -317,7 +322,7 @@ sub identify_most_linkely_own_rows {
 	if ( ! defined $with_acc and $self->{'data_table'} -> Rows == 1 ) {
 		return (0);
 	}
-	Carp::confess ( "$self->{'name'}: I could not identify the own acc based on the external accessions". join(", ", @accs) ."\n") 
+	Carp::confess ( "$self->{'name'}: I could not identify the own acc based on the external accessions ". join(", ", @accs) ."\n") 
 		unless ( defined $with_acc);
 	return @{ $self->acc2row_hash()->{$with_acc} };
 }

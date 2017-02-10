@@ -120,7 +120,7 @@ sub helpString {
    		      :The information for this ID id is downloaded 
    		       from NCBI and stored in the input file
    		ignore 'table1 table2 table3'
-   			  :is ignoring these tables 'SPOT_DESCRIPTOR'
+   			  :is ignoring these tables 'taxon Base'
    		useOnly 'EXPERIMENT_PACKAGE_SET EXPERIMENT_PACKAGE EXPERIMENT IDENTIFIERS TITLE'
    		      :dropps all other XML entries but the mentioned
    		addMultiple 'colname1 colname2 colname3'

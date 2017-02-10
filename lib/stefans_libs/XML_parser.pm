@@ -610,7 +610,8 @@ sub parse_NCBI {
 		if ( $area =~ m/accession$/ ) {
 			$delta = $self->register_column( $area, $hash, $entryID, 1 );
 		}
-		elsif ( $hash =~ m/^\w\w\w\d+$/ ) {    ## an accession!
+		#elsif ( $hash =~ m/^(\w\w\w\d+)_?r?1?$/ ) {    ## an accession!
+		elsif ( $hash =~ m/^\w\w\w\d+$/ ) {    ## an accession!	
 			$delta = $self->add_if_unequal( $area, $hash, $entryID );
 		}
 		else {
