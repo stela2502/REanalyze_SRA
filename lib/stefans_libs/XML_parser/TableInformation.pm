@@ -82,7 +82,7 @@ sub _is_acc {
 sub check_4_acc {
 	my ( $self, $array ) = @_;
 	if ( @$array[0] =~ m/[[:alpha:]][[:alpha:]][[:alpha:]]+\d\d\d+_r1/ ) {
-		for ( my $i = 0; $i <@$array; $i++ ){
+		for ( my $i = 0 ; $i < @$array ; $i++ ) {
 			@$array[$i] =~ s/_r1//;
 		}
 	}
@@ -126,8 +126,8 @@ sub identify_interesting_columns {
 	my ($tmp);
 	$self->{'Acc_Cols'}             = [];
 	$self->{'Complete_Cols_No_Acc'} = [];
-	
-	$self->_rename_columns( $data_table );
+
+	$self->_rename_columns($data_table);
 	$self->enforce_acc_in_first_col();
 	my @putative_accs = $self->check_4_acc( @{ $data_table->{'data'} }[0] );
 	foreach my $putative_acc_id (@putative_accs) {
@@ -144,30 +144,46 @@ sub identify_interesting_columns {
 	for ( my $i = 0 ; $i < $data_table->Columns ; $i++ ) {
 		next if ( $check->{$i} );
 		$tmp = $data_table->GetAsArray($i);
+
 		#if ( $self->is_complete($tmp) and $self->not_simple($tmp) ) {
-		if ( $self->not_simple($tmp) ) {	
+		if ( $self->not_simple($tmp) ) {
 			push( @{ $self->{'Complete_Cols_No_Acc'} }, $i );
 		}
 	}
-	if ( $self->{'debug'}) {
-		print "$self->{'name'} -> identify_interesting_columns() has identified ".scalar(@{$self->{'Acc_Cols'}})." acc - and ".scalar(@{$self->{'Complete_Cols_No_Acc'}})." data - columns:\n".
-			"Accs in columns: ".join( ", ",@{$self->{'data_table'}->{'header'}}[@{$self->{'Acc_Cols'}} ])
-			."\nData in columns: ". join(", ",@{$self->{'data_table'}->{'header'}}[@{$self->{'Complete_Cols_No_Acc'}} ] )."\n";
+	if ( $self->{'debug'} ) {
+		print
+		  "$self->{'name'} -> identify_interesting_columns() has identified "
+		  . scalar( @{ $self->{'Acc_Cols'} } )
+		  . " acc - and "
+		  . scalar( @{ $self->{'Complete_Cols_No_Acc'} } )
+		  . " data - columns:\n"
+		  . "Accs in columns: "
+		  . join( ", ",
+			@{ $self->{'data_table'}->{'header'} }[ @{ $self->{'Acc_Cols'} } ] )
+		  . "\nData in columns: "
+		  . join( ", ",
+			@{ $self->{'data_table'}->{'header'} }
+			  [ @{ $self->{'Complete_Cols_No_Acc'} } ] )
+		  . "\n";
 	}
 	return $self;
 }
 
 sub enforce_acc_in_first_col {
-	my ( $self ) = @_;
+	my ($self)     = @_;
 	my $data_table = $self->{'data_table'};
-	my @OK = $self->check_4_acc( $data_table->GetAsArray(0) );
-	return $self if (scalar(@OK) == $data_table->Rows);
+	my @OK         = $self->check_4_acc( $data_table->GetAsArray(0) );
+	return $self if ( scalar(@OK) == $data_table->Rows );
 	## now I need to act;
-	my $OK = { map { $_ => 1}  @OK };
-	for ( my $i = $data_table->Rows()-1; $i >= 0; $i -- ){
-		unless ( $OK->{$i}){
-			splice(@{$data_table->{'data'}}, $i, 1 );
-			warn "$self->{'name'}: I had to drop row $i as the acc column was undefined (col 0)\n";
+	my $OK = { map { $_ => 1 } @OK };
+	for ( my $i = $data_table->Rows() - 1 ; $i >= 0 ; $i-- ) {
+		unless ( $OK->{$i} ) {
+			warn
+"$self->{'name'}: I had to drop row $i as the acc column was undefined (col 0)\n'"
+			  . join( "', '",
+				map { unless ( $_) {''}else{ $_ } }
+				  @{ splice( @{ $data_table->{'data'} }, $i, 1 ) } )
+			  . "\n";
 		}
 	}
 	return $self;
@@ -177,16 +193,17 @@ sub _rename_columns {
 	my ( $self, $data_table ) = @_;
 	my $hash = $data_table->get_line_asHash(0);
 	my $tmp;
-	foreach my $colname ( @{$data_table->{'header'}} ){
-		next unless ( defined  $hash->{$colname});
+	foreach my $colname ( @{ $data_table->{'header'} } ) {
+		next unless ( defined $hash->{$colname} );
 		if ( $hash->{$colname} =~ m/^([[:alpha:]]+)\d+$/ ) {
 			$tmp = $1;
-			$self->{'data_table'}->rename_column($colname, $tmp) unless ( $colname eq $tmp);
+			$self->{'data_table'}->rename_column( $colname, $tmp )
+			  unless ( $colname eq $tmp );
 		}
 		else {
-			$tmp = $self->_better_colnames( $colname );
+			$tmp = $self->_better_colnames($colname);
 			unless ( $tmp eq $colname ) {
-				$data_table -> rename_column($colname, $tmp );
+				$data_table->rename_column( $colname, $tmp );
 			}
 		}
 	}
@@ -201,40 +218,44 @@ sub hash_of_hashes_2_data_table {
 		## invert the hashes
 		my $hash;
 		$problem = '';
-		while (my ( $new_value, $new_key) = each %{$table_rows->{$acc}} ){
-		#	if ( defined $hash->{$new_key}){
-		#		$problem .= "key '$new_key' is alreads defined in the temp hash: '$hash->{$new_key}' vs new value '$new_value'\n";
-		#	}
-		#	Carp::cluck ( "ACC: $acc\n$problem \$hash = {".root->print_perl_var_def($hash)."};" )
-		#		if ( $problem =~ m/\w/ );
-		#	print "\$new_value = $new_value\n";
+		while ( my ( $new_value, $new_key ) = each %{ $table_rows->{$acc} } ) {
+
+#	if ( defined $hash->{$new_key}){
+#		$problem .= "key '$new_key' is alreads defined in the temp hash: '$hash->{$new_key}' vs new value '$new_value'\n";
+#	}
+#	Carp::cluck ( "ACC: $acc\n$problem \$hash = {".root->print_perl_var_def($hash)."};" )
+#		if ( $problem =~ m/\w/ );
+#	print "\$new_value = $new_value\n";
 			$hash->{$new_key} = $new_value;
 		}
+
 		#advanced sorting adapted from http://www.perlmonks.org/?node_id=145659
-		my @colnames=map { pop @$_ }
-           sort{ $a->[0] <=> $b->[0] ||
-                 $a->[1] cmp $b->[1] }
-           map { [length($_), $_] } keys %{ $hash };
-    #    print "I have these colnames: '".join("' '",@colnames)."'\n";
-        $data_table->Add_2_Header( \@colnames );
-		$data_table->Add_Dataset( $hash );
+		my @colnames = map { pop @$_ }
+		  sort { $a->[0] <=> $b->[0] || $a->[1] cmp $b->[1] }
+		  map { [ length($_), $_ ] } keys %{$hash};
+
+		#    print "I have these colnames: '".join("' '",@colnames)."'\n";
+		$data_table->Add_2_Header( \@colnames );
+		$data_table->Add_Dataset($hash);
 	}
-	Carp::confess ( "Big problem" ) unless ( ref($self) eq "stefans_libs::XML_parser::TableInformation");
+	Carp::confess("Big problem")
+	  unless ( ref($self) eq "stefans_libs::XML_parser::TableInformation" );
 	$self->{'data_table'} = $data_table;
 	return $data_table;
 }
 
 sub _better_colnames {
 	my ( $self, $colname ) = @_;
-		if ( $colname =~ m/([A-Z_]-[a-z_])$/) {
-			$colname = $1;
-		}elsif ($colname =~ m/SUBMITTER_ID/ ) {
-			$colname = 'SUBMITTER_ID';
-		}
-		elsif ( $colname =~ m/(\.[A-Za-z])$/) {
-			$colname = $1;
-		}
-	
+	if ( $colname =~ m/([A-Z_]-[a-z_])$/ ) {
+		$colname = $1;
+	}
+	elsif ( $colname =~ m/SUBMITTER_ID/ ) {
+		$colname = 'SUBMITTER_ID';
+	}
+	elsif ( $colname =~ m/(\.[A-Za-z])$/ ) {
+		$colname = $1;
+	}
+
 	return $colname;
 }
 
@@ -255,7 +276,8 @@ sub get_all_data {
 	@accs = @{ $self->{'data_table'}->GetAsArray( $self->acc_col() ) };
 	unless ( defined $external_refs ) {
 		$external_refs = $self->refs_hash();
-	}else {
+	}
+	else {
 		$self->refs_hash();
 	}
 	my @header = @{ $self->{'data_table'}->{'header'} };
@@ -265,8 +287,7 @@ sub get_all_data {
 		{
 			if ( $self->{'debug'} ) {
 				map {
-					unless ( defined $external_ids->{ @$own_line_array[$_] } )
-					{
+					unless ( defined $external_ids->{ @$own_line_array[$_] } ) {
 						$external_ids->{ @$own_line_array[$_] } = $header[$_];
 						warn
 "get_all_data: I have added the value @$own_line_array[$_]\n";
@@ -319,11 +340,15 @@ sub identify_most_linkely_own_rows {
 			}
 		}
 	}
-	if ( ! defined $with_acc and $self->{'data_table'} -> Rows == 1 ) {
+	if ( !defined $with_acc and $self->{'data_table'}->Rows == 1 ) {
 		return (0);
 	}
-	Carp::confess ( "$self->{'name'}: I could not identify the own acc based on the external accessions ". join(", ", @accs) ."\n") 
-		unless ( defined $with_acc);
+	Carp::confess(
+"$self->{'name'}: I could not identify the own acc based on the external accessions:\n'"
+		  . join( "',\n'", @accs )
+		  . "'\nThe existing accs:\n'"
+		  . join( "'\n'", keys %{ $self->acc2row_hash() } )."'\n" )
+	  unless ( defined $with_acc );
 	return @{ $self->acc2row_hash()->{$with_acc} };
 }
 
@@ -335,7 +360,8 @@ This creates and returns an internal hash that links any internal ID to a set of
 
 sub acc2row_hash {
 	my ($self) = @_;
-	Carp::confess ( "You first need to run refs_hash() before you can get this" ) unless ( defined $self->{'refs'});
+	Carp::confess("You first need to run refs_hash() before you can get this")
+	  unless ( defined $self->{'refs'} );
 	return $self->{'acc2row'} if ( defined $self->{'acc2row'} );
 	$self->{'acc2row'} = {};
 	foreach ( values %{ $self->{'refs'} } ) {
@@ -368,13 +394,17 @@ sub refs_hash {
 	for ( my $i = 0 ; $i < @accs ; $i++ ) {
 		$acc = $accs[$i];
 		$self->{'refs'}->{$acc} = {
-			$acc  => @{ $self->{'data_table'}->{'header'} }[$self->acc_col()] ,
+			$acc  => @{ $self->{'data_table'}->{'header'} }[ $self->acc_col() ],
 			rowid => $i,
 		};
 	}
 	## and now add all interesting columns to the hash!
-	warn "Based on the column ".$self->acc_col().": the \$self->{'refs'} = "
-	  . root->print_perl_var_def( $self->{'refs'} ) . ";\n"."Leads to the acc2row hash". root->print_perl_var_def( $self->acc2row_hash() ) . ";\n"
+	warn "Based on the column "
+	  . $self->acc_col()
+	  . ": the \$self->{'refs'} = "
+	  . root->print_perl_var_def( $self->{'refs'} ) . ";\n"
+	  . "Leads to the acc2row hash"
+	  . root->print_perl_var_def( $self->acc2row_hash() ) . ";\n"
 	  if ( $self->{'debug'} );
 
 #warn "And here we have all columns in our table that correspond to acc $acc: ".join(", ",@{$self->acc2row_hash()->{$acc}} ) ."\n";
@@ -387,7 +417,8 @@ sub refs_hash {
 		  if ( $self->{'debug'} );
 		foreach my $acc_col ( @{ $self->{Acc_Cols} } ) {
 			$tmp_acc = @{ @{ $self->{'data_table'}->{data} }[$i] }[$acc_col];
-			$self->{'refs'}->{$acc}->{$tmp_acc} =@{ $self->{'data_table'}->{'header'} }[$acc_col]
+			$self->{'refs'}->{$acc}->{$tmp_acc} =
+			  @{ $self->{'data_table'}->{'header'} }[$acc_col]
 			  unless ( defined $self->{'refs'}->{$acc}->{$tmp_acc} );
 		}
 	}
@@ -408,22 +439,25 @@ sub acc_col {
 			last;
 		}
 	}
-	unless ( defined $self->{'_acc_col'} ){
-		$self->{'_acc_col'} = @{$self->{'Acc_Cols'}}[0]; ## use the first available...
+	unless ( defined $self->{'_acc_col'} ) {
+		$self->{'_acc_col'} =
+		  @{ $self->{'Acc_Cols'} }[0];    ## use the first available...
 	}
-	Carp::confess($self->{'data_table'}->AsTestString()
-	. "\nSorry there is no acc column in the table '$self->{'name'}'\n"
-	. "None of these columns contained the acc: '"
-	. join("' '",@{$self->{'data_table'}->{'header'}}[ @{$self->{'Acc_Cols'}}])
-	. "' (".join(", ",@{$self->{'Acc_Cols'}}).")\n"
-	)
-	  unless ( defined $self->{'_acc_col'} );
+	Carp::confess(
+		    $self->{'data_table'}->AsTestString()
+		  . "\nSorry there is no acc column in the table '$self->{'name'}'\n"
+		  . "None of these columns contained the acc: '"
+		  . join( "' '",
+			@{ $self->{'data_table'}->{'header'} }[ @{ $self->{'Acc_Cols'} } ] )
+		  . "' ("
+		  . join( ", ", @{ $self->{'Acc_Cols'} } ) . ")\n"
+	) unless ( defined $self->{'_acc_col'} );
 	return $self->{'_acc_col'};
 }
 
 sub is_acc {
 	my ( $self, $acc ) = @_;
-	return 0 unless ( defined $acc); 
-	return $acc =~ m/^[[:alpha:]][[:alpha:]][[:alpha:]]+\d\d\d+$/;
+	return 0 unless ( defined $acc );
+	return $acc =~ m/^[[:upper:]][[:upper:]][[:upper:]]+\d\d\d+$/;
 }
 1;

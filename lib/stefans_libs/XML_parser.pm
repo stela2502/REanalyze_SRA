@@ -36,7 +36,7 @@ sub new {
 
 	$self = {
 		'tables_lastID' => {},
-		'values' => [],
+		'values'        => [],
 		'tables'        => {},
 		'deparse_level' => 2,
 		'drop_first'    => 2,
@@ -82,8 +82,13 @@ sub table_and_colname {
 
 sub col_id_4_entry {
 	my ( $self, $data_table, $column, $value, $entryID, $new_line ) = @_;
-	if ($value =~ m/^(\w\d+)_r1$/ ) {
+	#warn "col_id_4_entry: column = $column; value = $value\n";
+	if ( $value =~ m/^(\w\d+)_r1$/ ) {
 		$value = $1;
+	}
+	if ( $value =~ m/^([[:alpha:]][[:alpha:]][[:alpha:]]+)\d\d\d+$/ ){
+		#warn "change column name $column to $1\n";
+		$column = $1;
 	}
 	my ($pos) = $data_table->Header_Position($column);
 	if ( !defined $pos ) {
@@ -121,7 +126,7 @@ sub col_id_4_entry {
 
 sub add_if_empty {
 	my ( $self, $orig_column, $value, $entryID ) = @_;
-	if ($value =~ m/^(\w\d+)_r1$/ ) {
+	if ( $value =~ m/^(\w\d+)_r1$/ ) {
 		$value = $1;
 	}
 	my ( $data_table, $column ) =
@@ -138,7 +143,7 @@ sub add_if_empty {
 
 sub add_if_unequal {
 	my ( $self, $orig_column, $value, $entryID ) = @_;
-	if ($value =~ m/^(\w\d+)_r1$/ ) {
+	if ( $value =~ m/^(\w\d+)_r1$/ ) {
 		$value = $1;
 	}
 	my ( $data_table, $column ) =
@@ -172,7 +177,7 @@ sub add_if_unequal {
 sub register_column {
 	my ( $self, $orig_column, $value, $entryID, $new_line, $prohibitDeepRec ) =
 	  @_;
-	if ($value =~ m/^(\w\d+)_r1$/ ) {
+	if ( $value =~ m/^(\w\d+)_r1$/ ) {
 		$value = $1;
 	}
 	$new_line        ||= 0;
@@ -275,11 +280,91 @@ sub write_files {
 			warn "no data in table $name\n";
 			next;
 		}
+		$self->rename_acc_columns($name);
 		$tmp = $fname . "_" . $name . ".xls";
 		print join( " ", $tmp, $self->{'tables'}->{$name}->Rows, 'lines' )
 		  . "\n";
 		$self->{'tables'}->{$name}->write_file($tmp);
 	}
+}
+
+=head3 rename_acc_columns ($tname)
+
+This function uses the $self->{'tables'}->{$tname} data_table and checks all columns for NCBI IDs (/^[['upper']][['upper']][['upper']]+\d\d\+/)
+If one column contains only IDS the column name will be changed to the string part of the ID.
+If multiple column contain the same ID type, the columns will be merged.
+
+=cut
+
+sub rename_acc_columns {
+	my ( $self, $tname ) = @_;
+	return $self;
+	my @colnames = @{ $self->{'tables'}->{$tname}->{'header'} };
+	my ( $IDtype, $OK, $from_to, $to_from, $merge_problem );
+
+	foreach my $cname (@colnames) {
+		$IDtype = '';
+		$OK     = 0;
+		foreach ( @{ $self->{'tables'}->{$tname}->GetAsArray($cname) } ) {
+			if ($_) {
+				if ( $_ =~ m/^([[:upper:]][[:upper:]][[:upper:]]+)\d\d\d+$/ ) {
+					$IDtype = $1;
+					$OK     = 1;
+				}
+				else {
+					$OK = 0;
+					last;
+				}
+			}
+		}
+		if ($OK) {
+			$from_to->{$cname} = $IDtype;
+			$to_from->{$IDtype} ||= [];
+			push( @{ $to_from->{$IDtype} }, $cname );
+			#$self->{'tables'}->{$tname}->rename_column($cname, $IDtype );
+		}
+	}
+	$merge_problem = 0;
+	foreach my $cname ( keys %$from_to ) {
+		$IDtype = $from_to->{$cname};
+		if ( scalar( @{ $to_from->{$IDtype} } ) == 1 ) {
+			$self->{'tables'}->{$tname}->rename_column( $cname, $IDtype );
+		}
+		else {
+			## oops more than one column with the same IDtype...
+			my $tmp;
+			my @data = map { ## this checks for a unique ID in all columns of the same ID type per line
+				$tmp = '';
+				foreach my $val ( map{ if ( ref($_) eq "ARRAY") { @$_} else {$_} }
+					$self->{'tables'}->{$tname}
+						  ->get_value_4_line_and_column( $_,
+							$to_from->{$IDtype} )
+				  )
+				{
+					unless ($tmp) {
+						$tmp = $val;
+					}
+					elsif ($val) {
+						unless ( $tmp eq $val ){
+						warn "$tname: While merging the columns '"
+							  . join( ', ', @{ $to_from->{$IDtype} } )
+							  . "' I encountered a entry missmatch on line $_ ($val !== $tmp)";
+						$merge_problem = 1;
+						}
+					}
+				}
+			} 0 .. ( $self->{'tables'}->{$tname}->Rows() - 1 );
+			## now add the data with the right name and drop the old columns....
+			$self->{'tables'}->{$tname}->add_column( $IDtype, \@data );
+			foreach ( @{ $to_from->{$IDtype} }){
+				$self->{'tables'}->{$tname}->drop_column($_);
+			}
+		}
+	}
+	if ( $merge_problem ) {
+		$self->{'tables'}->{$tname} = undef;
+	}
+	return $self;
 }
 
 =head3 load_set( @files )
@@ -290,14 +375,15 @@ This function has to become way more efficient.
 =cut
 
 sub load_set {
-	my ($self, @files ) = @_;
-	my (@tmp, $fm);
-	foreach my $file ( @files ) {
-		$fm = root->filemap( $file );
+	my ( $self, @files ) = @_;
+	my ( @tmp, $fm );
+	foreach my $file (@files) {
+		$fm = root->filemap($file);
 		next if ( $fm->{'filename_core'} =~ m/SUMMARY.xls$/ );
 		@tmp = split( "_", $fm->{'filename_core'} );
-		shift( @tmp );
-		$self->{'tables'}->{ join("_", @tmp) } = data_table->new({filename => $file } ) ;
+		shift(@tmp);
+		$self->{'tables'}->{ join( "_", @tmp ) } =
+		  data_table->new( { filename => $file } );
 	}
 	return $self;
 }
@@ -309,7 +395,7 @@ Here I try to identify all NCBI IDS and sum up a hopefully interesting and meani
 =cut
 
 sub createSummaryTable {
-	my ( $self ) = @_;
+	my ($self) = @_;
 	## now collect all IDS?
 	## there are IDs in the range of
 	## DRP DRR
@@ -317,26 +403,45 @@ sub createSummaryTable {
 	## ERP ERR
 	## SRP SRR
 	## and in addition SAMN, GSE, GSM, PRINJA and so on....
-	
-	my ( $table_name, $summary_hash,$ret );
-	
-	foreach $table_name ('RUN_SET', 'EXPERIMENT', 'SAMPLE', 'Pool', 'STUDY' ){
-		Carp::confess("This dataset has no $table_name information") unless (  $table_name =~ m/\w/ and $self->{'tables'}->{$table_name}->Rows() > 0  );
-		$summary_hash = stefans_libs::XML_parser::TableInformation->new( { 'debug' => $self->{'debug'}, 'name' => $table_name,  'data_table' => $self->{'tables'}->{$table_name} })->get_all_data( $summary_hash );
+
+	my ( $table_name, $summary_hash, $ret );
+
+	foreach $table_name ( 'RUN_SET', 'EXPERIMENT', 'SAMPLE', 'Pool', 'STUDY' ) {
+		Carp::confess("This dataset has no $table_name information")
+		  unless ( $table_name =~ m/\w/
+			and $self->{'tables'}->{$table_name}->Rows() > 0 );
+		$summary_hash = stefans_libs::XML_parser::TableInformation->new(
+			{
+				'debug'      => $self->{'debug'},
+				'name'       => $table_name,
+				'data_table' => $self->{'tables'}->{$table_name}
+			}
+		)->get_all_data($summary_hash);
 	}
-	
-	
-	if ( defined $summary_hash ) {
-		my $obj =  stefans_libs::XML_parser::TableInformation->new( { 'debug' => $self->{'debug'}, 'name' => 'SUMMARY'} );
-		$ret = $obj->hash_of_hashes_2_data_table($summary_hash);
-		## now I only need to create the wget download for the NCBI sra files
+
+	eval {
+		if ( defined $summary_hash ) {
+			my $obj = stefans_libs::XML_parser::TableInformation->new(
+				{ 'debug' => $self->{'debug'}, 'name' => 'SUMMARY' } );
+			$ret = $obj->hash_of_hashes_2_data_table($summary_hash);
+			## now I only need to create the wget download for the NCBI sra files
+			$ret->Add_2_Header('Download');
+			$self->create_download_column( $ret, 'SRR', 'SRA', 'SRP', 'SRX' );
+			$self->create_download_column( $ret, 'ERR', 'ERP', 'ERR' );
+			$self->create_download_column( $ret, 'ERR', 'ERR' );
+			$self->create_download_column( $ret, 'DRR', 'DRP' );
+
+			#$ret->write_file($fname);
+		}
+	};
+	unless ( defined $ret ) {
+		warn "Fallback to runset only\n";
+		$ret = $self->{'tables'}->{'RUN_SET'};
 		$ret->Add_2_Header('Download');
 		$self->create_download_column( $ret, 'SRR', 'SRA', 'SRP', 'SRX' );
 		$self->create_download_column( $ret, 'ERR', 'ERP', 'ERR' );
 		$self->create_download_column( $ret, 'ERR', 'ERR' );
 		$self->create_download_column( $ret, 'DRR', 'DRP' );
-		
-		#$ret->write_file($fname);
 	}
 	return $ret;
 }
@@ -346,21 +451,22 @@ sub write_summary_file {
 
 	my $ret = $self->createSummaryTable();
 	$ret->write_file($fname) if ( ref($ret) eq "data_table" );
-	
+
 	return $ret;
 }
 
 sub create_download_column {
-	my ( $self,  $ret, $acc, @sample ) = @_;
-	
+	my ( $self, $ret, $acc, @sample ) = @_;
+
 	if ( defined $ret->Header_Position('Download') ) {
 		my $OK = 1;
-		map { $OK =0 unless ( $_ =~ m/wget/ ); } @{$ret->GetAsArray('Download')};
-		return $ret if ( $OK );
+		map { $OK = 0 unless ( $_ =~ m/wget/ ); }
+		  @{ $ret->GetAsArray('Download') };
+		return $ret if ($OK);
 	}
 	my $accession_col = [];
-	my $sample_col = [];
-	my $add = 0;
+	my $sample_col    = [];
+	my $add           = 0;
 	for ( ; $add > 0 ; $add-- ) {
 		last if ( defined @$accession_col[$add] );
 	}
@@ -372,13 +478,13 @@ sub create_download_column {
 			}
 		}
 	}
-	
+
 	unless ( defined @$sample_col[$add] ) {
 		@$accession_col[$add] = undef;
 	}
 	else {
-		#print "this should work!  @$accession_col[$add] + @$sample_col[$add]\n";
-		# /sra/sra-instant/reads/ByRun/sra/{SRR|ERR|DRR}/<first 6 characters of accession>/<accession>/<accession>.sra
+#print "this should work!  @$accession_col[$add] + @$sample_col[$add]\n";
+# /sra/sra-instant/reads/ByRun/sra/{SRR|ERR|DRR}/<first 6 characters of accession>/<accession>/<accession>.sra
 		my ($download_col) = $ret->Add_2_Header('Download');
 		my $serv = "ftp://ftp-trace.ncbi.nih.gov";
 		my ( $sra, $srr );
@@ -387,11 +493,12 @@ sub create_download_column {
 				next unless ( defined @$accession_col[$a] );
 				$srr = @{ @{ $ret->{'data'} }[$i] }[ @$accession_col[$a] ];
 				$sra = @{ @{ $ret->{'data'} }[$i] }[ @$sample_col[$a] ];
-				#print "sra (@$sample_col[$a]) =$sra and srr (@$accession_col[$a]) = $srr \n";
+
+  #print "sra (@$sample_col[$a]) =$sra and srr (@$accession_col[$a]) = $srr \n";
 				if ( $self->is_acc($sra) and $self->is_acc($srr) ) {
 					@{ @{ $ret->{'data'} }[$i] }[$download_col] =
-					    "wget -O '" 
-					  . $srr 
+					    "wget -O '"
+					  . $srr
 					  . ".sra' '"
 					  . join( "/",
 						$serv,
@@ -475,15 +582,60 @@ sub drop_duplicates {
 		}
 		$self->{'done'}->{'drop_duplicates'} = 1;
 	}
+	## and now I need to drop duplicate entries in the tables too.
+	foreach my $this ( values %{ $self->{'tables'} } ) {
+		## which one is the uniqe ID
+		my $max_uniques = 0;
+		my $colname;
+		my @vals;
+		
+		foreach my $cname ( @{$this->{'header'}}) {
+			my $OK = 1;
+			@vals = @{$this->GetAsArray($cname)};
+			map { $OK = 0 unless ( $self->is_acc($_))} @vals;
+			if ( $OK ) {
+				my %seen;
+				if ( scalar(grep { !$seen{$_}++ } @vals) > $max_uniques ) {
+					$colname = $cname;
+					$max_uniques = scalar(keys%seen);
+				}
+			}
+		}
+		next unless ( $colname );
+		warn "ID column is $colname with $max_uniques unique entries\n";
+		@vals = @{$this->GetAsArray($colname)};
+		my $seen;
+		for ( my $i = 0; $i < @vals ; $i++) {
+			$seen->{$vals[$i]} ||= [];
+			push ( @{$seen->{$vals[$i]}}, $i);
+		}
+		my @drop;
+		foreach my $ID ( keys %$seen ) {
+			if ( @{$seen->{$ID}} > 1 ) {
+				do {
+					last if (@{$seen->{$ID}} == 1);
+					push(@drop, pop(@{$seen->{$ID}}));
+				};
+			}
+		}
+		if ( @drop ){
+			foreach my $drop ( sort { $b <=> $a } @drop ) {
+				splice( @{$this->{'data'}}, $drop, 1);
+				warn "I drop row $drop due a duplicate main ID\n";
+			}
+		}
+	}
+		
 	return $self;
 }
 
-sub options{
+sub options {
 	my ( $self, $name, $replacement ) = @_;
-	if ( ref($name) eq "HASH" and ! defined $self->{'options'} ){
+	if ( ref($name) eq "HASH" and !defined $self->{'options'} ) {
 		$self->{'options'} = $name;
-	}elsif (defined $name ) {
-		if ( defined $replacement) {
+	}
+	elsif ( defined $name ) {
+		if ( defined $replacement ) {
 			$self->{'options'}->{$name} = $replacement;
 		}
 		return $self->{'options'}->{$name};
@@ -491,13 +643,12 @@ sub options{
 	return $self->{'options'};
 }
 
-
 sub parse_NCBI {
 	my ( $self, $hash, $area, $entryID, $new_line ) = @_;
 	$entryID  ||= 1;
 	$new_line ||= 0;
 	$area     ||= '';
-	if ( $self->{'debug'}) {
+	if ( $self->{'debug'} ) {
 		print "The actual entryID: $entryID\n";
 		return if ( $entryID >= 2 );
 	}
@@ -512,14 +663,15 @@ sub parse_NCBI {
 	elsif ( ref($hash) eq "HASH" ) {
 		$str = lc( join( " ", sort keys %$hash ) );
 		if ( defined $self->options('inspect') ) {
-			$self->options('inspect', lc( $self->options('inspect') ));
+			$self->options( 'inspect', lc( $self->options('inspect') ) );
 			if (
 				join( " ", lc( values %$hash ), $str ) =~
 				m/$self->options('inspect')/ )
 			{
 				$self->print_and_die( $hash,
-					"You have searched for the string '".$self->options('inspect')."':\n"
-				);
+					    "You have searched for the string '"
+					  . $self->options('inspect')
+					  . "':\n" );
 			}
 		}
 
@@ -557,15 +709,15 @@ sub parse_NCBI {
 			  )
 			{
 				if ( defined $self->options('useOnly') ) {
-					unless ( lc($key) eq $key){
-					unless ( $self->options('useOnly')->{$key}) {
-						warn "I skipp the key '$key'\n";
-						return $delta;
-					}
+					unless ( lc($key) eq $key ) {
+						unless ( $self->options('useOnly')->{$key} ) {
+							warn "I skipp the key '$key'\n";
+							return $delta;
+						}
 					}
 				}
-				if ( defined $self->options('ignore')){
-					if ( $self->options('ignore')->{$key}) {
+				if ( defined $self->options('ignore') ) {
+					if ( $self->options('ignore')->{$key} ) {
 						warn "I skipp the key '$key'\n";
 						return $delta;
 					}
@@ -585,8 +737,8 @@ sub parse_NCBI {
 				}
 				if ( $str == 0 ) {
 					$delta =
-					  $self->parse_NCBI( $hash->{$key}, "$area-$key", $entryID,
-						1 );
+					  $self->parse_NCBI( $hash->{$key}, "$area-$key",
+						$entryID, 1 );
 				}
 
 				#				$overall_delta = $delta unless ( $delta == 0);
@@ -610,8 +762,9 @@ sub parse_NCBI {
 		if ( $area =~ m/accession$/ ) {
 			$delta = $self->register_column( $area, $hash, $entryID, 1 );
 		}
+
 		#elsif ( $hash =~ m/^(\w\w\w\d+)_?r?1?$/ ) {    ## an accession!
-		elsif ( $hash =~ m/^\w\w\w\d+$/ ) {    ## an accession!	
+		elsif ( $hash =~ m/^\w\w\w\d+$/ ) {    ## an accession!
 			$delta = $self->add_if_unequal( $area, $hash, $entryID );
 		}
 		else {
@@ -646,11 +799,11 @@ sub print_debug {
 	  "$str final delta = $delta for $area, line =$entryID, and hash $hash\n"
 	  if ( $self->{'debug'} );
 }
+
 sub is_acc {
 	my ( $self, $acc ) = @_;
-	return 0 unless ( defined $acc);
+	return 0 unless ( defined $acc );
 	return $acc =~ m/^[[:alpha:]][[:alpha:]][[:alpha:]]+\d\d\d+$/;
 }
-
 
 1;
