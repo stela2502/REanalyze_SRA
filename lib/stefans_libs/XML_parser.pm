@@ -36,6 +36,7 @@ sub new {
 
 	$self = {
 		'tables_lastID' => {},
+		'problematic_columns' => {},
 		'values'        => [],
 		'tables'        => {},
 		'deparse_level' => 2,
@@ -87,7 +88,7 @@ sub col_id_4_entry {
 		$value = $1;
 	}
 	if ( $value =~ m/^([[:alpha:]][[:alpha:]][[:alpha:]]+)\d\d\d+$/ ){
-		#warn "change column name $column to $1\n";
+		warn "change column name $column to $1\n" if ( $self->{'debug'});
 		$column = $1;
 	}
 	my ($pos) = $data_table->Header_Position($column);
@@ -263,10 +264,11 @@ sub register_table {
 
 sub write_files {
 	my ( $self, $fname, $drop ) = @_;
-	if ( !defined $drop ) { $drop = 1 }
+	unless ( defined $drop ) { $drop = 1 }
 	my ( $this, $unique, $key, $tmp );
-	$self->drop_no_acc();
+	
 	if ($drop) {
+		$self->drop_no_acc();
 		$self->drop_duplicates();
 	}
 	foreach my $name ( keys %{ $self->{'tables'} } ) {
@@ -416,7 +418,10 @@ sub createSummaryTable {
 				'name'       => $table_name,
 				'data_table' => $self->{'tables'}->{$table_name}
 			}
-		)->get_all_data($summary_hash);
+		)->get_all_data($summary_hash, $table_name);
+		if ( ref( $summary_hash ) eq "ARRAY" ) {# internal error - the IDS submitted are the ones I should look at
+			return $summary_hash;
+		}
 	}
 
 	eval {
@@ -450,7 +455,9 @@ sub write_summary_file {
 	my ( $self, $fname ) = @_;
 
 	my $ret = $self->createSummaryTable();
-	$ret->write_file($fname) if ( ref($ret) eq "data_table" );
+	if ( ref($ret) eq "data_table" ){
+		$ret->write_file($fname)
+	}
 
 	return $ret;
 }
@@ -612,16 +619,23 @@ sub drop_duplicates {
 		my @drop;
 		foreach my $ID ( keys %$seen ) {
 			if ( @{$seen->{$ID}} > 1 ) {
-				do {
-					last if (@{$seen->{$ID}} == 1);
-					push(@drop, pop(@{$seen->{$ID}}));
-				};
+				if ( $ID eq "" ) {
+					push(@drop,@{$seen->{$ID}});
+				}else {
+					push(@drop,@{$seen->{$ID}}[1..scalar(@{$seen->{$ID}})-1] )
+				}
 			}
 		}
 		if ( @drop ){
 			foreach my $drop ( sort { $b <=> $a } @drop ) {
-				splice( @{$this->{'data'}}, $drop, 1);
-				warn "I drop row $drop due a duplicate main ID\n";
+				my $i = 0;
+				foreach my $pob_value (@{splice( @{$this->{'data'}}, $drop, 1)}){
+					if ($pob_value) {
+						$self->{'problematic_columns'}->{@{$this->{'header'}}[$i]}++;
+					}
+					$i ++;
+				}
+				warn "I drop row $drop due a duplicate/missing main ID\n";
 			}
 		}
 	}

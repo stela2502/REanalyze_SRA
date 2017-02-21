@@ -148,6 +148,8 @@ sub identify_interesting_columns {
 		#if ( $self->is_complete($tmp) and $self->not_simple($tmp) ) {
 		if ( $self->not_simple($tmp) ) {
 			push( @{ $self->{'Complete_Cols_No_Acc'} }, $i );
+		}elsif ($self->{'debug'}) {
+			print "I excluded the column '$tmp' ($i) from the summary table - only one entry!\n";
 		}
 	}
 	if ( $self->{'debug'} ) {
@@ -270,7 +272,9 @@ stefans_libs::XML_parser::write_summary_table function.
 =cut
 
 sub get_all_data {
-	my ( $self, $external_refs ) = @_;
+	my ( $self, $external_refs, $table_name  ) = @_;
+	$table_name ||= 'undefined';
+	$self->{'name'} ||= $table_name;
 	$self->identify_interesting_columns();
 	my ( $acc, @accs );
 	@accs = @{ $self->{'data_table'}->GetAsArray( $self->acc_col() ) };
@@ -281,9 +285,16 @@ sub get_all_data {
 		$self->refs_hash();
 	}
 	my @header = @{ $self->{'data_table'}->{'header'} };
+	my @ids;
 	foreach my $external_ids ( values %$external_refs ) {
+		@ids = $self->identify_most_linkely_own_rows( keys %$external_ids );
+		if ( $self->{'fallback_script'} ){
+			#shit there are some IDS I can not keep in the data!
+			warn "I could not process the data for the ID(s) ".join(",",sort keys %$external_ids)."\n";
+			next;
+		}
 		foreach my $own_line_array ( @{ $self->{'data_table'}->{'data'} }
-			[ $self->identify_most_linkely_own_rows( keys %$external_ids ) ] )
+			[ @ids ] )
 		{
 			if ( $self->{'debug'} ) {
 				map {
@@ -343,13 +354,17 @@ sub identify_most_linkely_own_rows {
 	if ( !defined $with_acc and $self->{'data_table'}->Rows == 1 ) {
 		return (0);
 	}
+	## instead of dying here I create a mess:
+	$self->{'fallback_script'} = [grep (/S[AR][MS]/, sort keys %{ $self->acc2row_hash() })];
+	
+	return 0;
+		
 	Carp::confess(
-"$self->{'name'}: I could not identify the own acc based on the external accessions:\n'"
-		  . join( "',\n'", @accs )
+"$self->{'name'}: I could not identify the own table line for these external accessions:\n'"
+		  . join( "',\t'", @accs )
 		  . "'\nThe existing accs:\n'"
-		  . join( "'\n'", keys %{ $self->acc2row_hash() } )."'\n" )
+		  . join( "'\n'", sort keys %{ $self->acc2row_hash() } )."'\n" )
 	  unless ( defined $with_acc );
-	return @{ $self->acc2row_hash()->{$with_acc} };
 }
 
 =head3 acc2row_hash() 
@@ -377,7 +392,12 @@ sub acc2row_hash {
 
 =head3 refs_hash()
 
-Processes the internal table to create a { <unique_id> => { 'rowid' => <this_table_line_links_to_that_id>, <any_other_local_acc> => <local column name> } }
+Processes the internal table to create a 
+{ <unique_id> => { 
+	'rowid' => <this_table_line_links_to_that_id>, 
+	<any_other_local_acc> => <local column name> 
+	} 
+}
 
 The data can be used to create the whole Summary data structure.
 
@@ -410,12 +430,17 @@ sub refs_hash {
 #warn "And here we have all columns in our table that correspond to acc $acc: ".join(", ",@{$self->acc2row_hash()->{$acc}} ) ."\n";
 	for ( my $i = 0 ; $i < @accs ; $i++ ) {
 		$acc = $accs[$i];
-		warn "we have "
+		warn "$self->{'name'}: we have "
 		  . scalar( @{ $self->acc2row_hash()->{$acc} } ) . " ("
-		  . join( ", ", @{ $self->acc2row_hash()->{$acc} } )
+	#	  . join( ", ", @{ $self->acc2row_hash()->{$acc} } )
 		  . " table rows in the acc2row_hash data for acc $acc\n"
 		  if ( $self->{'debug'} );
 		foreach my $acc_col ( @{ $self->{Acc_Cols} } ) {
+			next if ( $acc eq "" );
+			unless ( @{ $self->{'data_table'}->{data} }[$i] ) {
+				warn "Internal error: acc '$acc' has no reference in the table summary information\n";
+				next;
+			}
 			$tmp_acc = @{ @{ $self->{'data_table'}->{data} }[$i] }[$acc_col];
 			$self->{'refs'}->{$acc}->{$tmp_acc} =
 			  @{ $self->{'data_table'}->{'header'} }[$acc_col]
