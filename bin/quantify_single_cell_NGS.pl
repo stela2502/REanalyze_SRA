@@ -280,7 +280,7 @@ print SCR join(
 	"\n",
 	(
 		map {
-"if ( ! file.exists( '$tmp_path/Robject$_.RData.finished' ) ) { Sys.sleep(10) }"
+"while ( ! file.exists( '$tmp_path/Robject$_.RData.finished' ) ) { Sys.sleep(10) }"
 		} 1 .. $a
 	),
 	"load('$tmp_path/Robject1.RData')\n",
