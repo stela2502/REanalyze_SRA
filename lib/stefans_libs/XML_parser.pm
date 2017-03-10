@@ -35,14 +35,14 @@ sub new {
 	my ($self);
 
 	$self = {
-		'tables_lastID' => {},
+		'tables_lastID'       => {},
 		'problematic_columns' => {},
-		'values'        => [],
-		'tables'        => {},
-		'deparse_level' => 2,
-		'drop_first'    => 2,
-		'debug'         => 0,
-		'done'          => {},
+		'values'              => [],
+		'tables'              => {},
+		'deparse_level'       => 2,
+		'drop_first'          => 2,
+		'debug'               => 0,
+		'done'                => {},
 	};
 
 	bless $self, $class if ( $class eq "stefans_libs::XML_parser" );
@@ -62,10 +62,12 @@ It also checks whether the last row has been 'filled' if not it flicks back one 
 sub table_and_colname {
 	my ( $self, $column, $entryID ) = @_;
 	my @tmp = split( "-", $column );
+	my $table_name;
+	
 	for ( my $i = 0 ; $i < $self->{'drop_first'} ; $i++ ) {
 		shift(@tmp);
 	}
-	my $table_name = join( "-",
+	$table_name = join( "-",
 		@tmp[ 0 .. ( $self->{'deparse_level'} - $self->{'drop_first'} ) ] );
 
 	for (
@@ -76,6 +78,9 @@ sub table_and_colname {
 	{
 		shift(@tmp);
 	}
+	if ($table_name eq "" ) {
+		$table_name = 'undefined';
+	}
 	my $data_table = $self->register_table( $table_name, $entryID );
 	$column = join( "-", @tmp );
 	return ( $data_table, $column );
@@ -83,12 +88,13 @@ sub table_and_colname {
 
 sub col_id_4_entry {
 	my ( $self, $data_table, $column, $value, $entryID, $new_line ) = @_;
+
 	#warn "col_id_4_entry: column = $column; value = $value\n";
 	if ( $value =~ m/^(\w\d+)_r1$/ ) {
 		$value = $1;
 	}
-	if ( $value =~ m/^([[:alpha:]][[:alpha:]][[:alpha:]]+)\d\d\d+$/ ){
-		warn "change column name $column to $1\n" if ( $self->{'debug'});
+	if ( $value =~ m/^([[:alpha:]][[:alpha:]][[:alpha:]]+)\d\d\d+$/ ) {
+		warn "change column name $column to $1\n" if ( $self->{'debug'} );
 		$column = $1;
 	}
 	my ($pos) = $data_table->Header_Position($column);
@@ -266,7 +272,7 @@ sub write_files {
 	my ( $self, $fname, $drop ) = @_;
 	unless ( defined $drop ) { $drop = 1 }
 	my ( $this, $unique, $key, $tmp );
-	
+
 	if ($drop) {
 		$self->drop_no_acc();
 		$self->drop_duplicates();
@@ -323,6 +329,7 @@ sub rename_acc_columns {
 			$from_to->{$cname} = $IDtype;
 			$to_from->{$IDtype} ||= [];
 			push( @{ $to_from->{$IDtype} }, $cname );
+
 			#$self->{'tables'}->{$tname}->rename_column($cname, $IDtype );
 		}
 	}
@@ -335,35 +342,38 @@ sub rename_acc_columns {
 		else {
 			## oops more than one column with the same IDtype...
 			my $tmp;
-			my @data = map { ## this checks for a unique ID in all columns of the same ID type per line
+			my @data = map
+			{ ## this checks for a unique ID in all columns of the same ID type per line
 				$tmp = '';
-				foreach my $val ( map{ if ( ref($_) eq "ARRAY") { @$_} else {$_} }
-					$self->{'tables'}->{$tname}
-						  ->get_value_4_line_and_column( $_,
-							$to_from->{$IDtype} )
+				foreach my $val (
+					map {
+						if   ( ref($_) eq "ARRAY" ) { @$_ }
+						else                        { $_ }
+					} $self->{'tables'}->{$tname}
+					->get_value_4_line_and_column( $_, $to_from->{$IDtype} )
 				  )
 				{
 					unless ($tmp) {
 						$tmp = $val;
 					}
 					elsif ($val) {
-						unless ( $tmp eq $val ){
-						warn "$tname: While merging the columns '"
+						unless ( $tmp eq $val ) {
+							warn "$tname: While merging the columns '"
 							  . join( ', ', @{ $to_from->{$IDtype} } )
 							  . "' I encountered a entry missmatch on line $_ ($val !== $tmp)";
-						$merge_problem = 1;
+							$merge_problem = 1;
 						}
 					}
 				}
 			} 0 .. ( $self->{'tables'}->{$tname}->Rows() - 1 );
 			## now add the data with the right name and drop the old columns....
 			$self->{'tables'}->{$tname}->add_column( $IDtype, \@data );
-			foreach ( @{ $to_from->{$IDtype} }){
+			foreach ( @{ $to_from->{$IDtype} } ) {
 				$self->{'tables'}->{$tname}->drop_column($_);
 			}
 		}
 	}
-	if ( $merge_problem ) {
+	if ($merge_problem) {
 		$self->{'tables'}->{$tname} = undef;
 	}
 	return $self;
@@ -418,8 +428,9 @@ sub createSummaryTable {
 				'name'       => $table_name,
 				'data_table' => $self->{'tables'}->{$table_name}
 			}
-		)->get_all_data($summary_hash, $table_name);
-		if ( ref( $summary_hash ) eq "ARRAY" ) {# internal error - the IDS submitted are the ones I should look at
+		)->get_all_data( $summary_hash, $table_name );
+		if ( ref($summary_hash) eq "ARRAY" )
+		{    # internal error - the IDS submitted are the ones I should look at
 			return $summary_hash;
 		}
 	}
@@ -455,8 +466,8 @@ sub write_summary_file {
 	my ( $self, $fname ) = @_;
 
 	my $ret = $self->createSummaryTable();
-	if ( ref($ret) eq "data_table" ){
-		$ret->write_file($fname)
+	if ( ref($ret) eq "data_table" ) {
+		$ret->write_file($fname);
 	}
 
 	return $ret;
@@ -595,51 +606,57 @@ sub drop_duplicates {
 		my $max_uniques = 0;
 		my $colname;
 		my @vals;
-		
-		foreach my $cname ( @{$this->{'header'}}) {
+
+		foreach my $cname ( @{ $this->{'header'} } ) {
 			my $OK = 1;
-			@vals = @{$this->GetAsArray($cname)};
-			map { $OK = 0 unless ( $self->is_acc($_))} @vals;
-			if ( $OK ) {
+			@vals = @{ $this->GetAsArray($cname) };
+			map { $OK = 0 unless ( $self->is_acc($_) ) } @vals;
+			if ($OK) {
 				my %seen;
-				if ( scalar(grep { !$seen{$_}++ } @vals) > $max_uniques ) {
-					$colname = $cname;
-					$max_uniques = scalar(keys%seen);
+				if ( scalar( grep { !$seen{$_}++ } @vals ) > $max_uniques ) {
+					$colname     = $cname;
+					$max_uniques = scalar( keys %seen );
 				}
 			}
 		}
-		next unless ( $colname );
+		next unless ($colname);
 		warn "ID column is $colname with $max_uniques unique entries\n";
-		@vals = @{$this->GetAsArray($colname)};
+		@vals = @{ $this->GetAsArray($colname) };
 		my $seen;
-		for ( my $i = 0; $i < @vals ; $i++) {
-			$seen->{$vals[$i]} ||= [];
-			push ( @{$seen->{$vals[$i]}}, $i);
+		for ( my $i = 0 ; $i < @vals ; $i++ ) {
+			$seen->{ $vals[$i] } ||= [];
+			push( @{ $seen->{ $vals[$i] } }, $i );
 		}
 		my @drop;
 		foreach my $ID ( keys %$seen ) {
-			if ( @{$seen->{$ID}} > 1 ) {
+			if ( @{ $seen->{$ID} } > 1 ) {
 				if ( $ID eq "" ) {
-					push(@drop,@{$seen->{$ID}});
-				}else {
-					push(@drop,@{$seen->{$ID}}[1..scalar(@{$seen->{$ID}})-1] )
+					push( @drop, @{ $seen->{$ID} } );
+				}
+				else {
+					push( @drop,
+						@{ $seen->{$ID} }
+						  [ 1 .. scalar( @{ $seen->{$ID} } ) - 1 ] );
 				}
 			}
 		}
-		if ( @drop ){
+		if (@drop) {
 			foreach my $drop ( sort { $b <=> $a } @drop ) {
 				my $i = 0;
-				foreach my $pob_value (@{splice( @{$this->{'data'}}, $drop, 1)}){
+				foreach my $pob_value (
+					@{ splice( @{ $this->{'data'} }, $drop, 1 ) } )
+				{
 					if ($pob_value) {
-						$self->{'problematic_columns'}->{@{$this->{'header'}}[$i]}++;
+						$self->{'problematic_columns'}
+						  ->{ @{ $this->{'header'} }[$i] }++;
 					}
-					$i ++;
+					$i++;
 				}
 				warn "I drop row $drop due a duplicate/missing main ID\n";
 			}
 		}
 	}
-		
+
 	return $self;
 }
 
@@ -659,6 +676,25 @@ sub options {
 
 sub parse_NCBI {
 	my ( $self, $hash, $area, $entryID, $new_line ) = @_;
+	if ( defined $self->options('inspect') ) {
+		my $target = $self->options('inspect');
+		if (
+			join(
+				" ",
+				map {
+					if ( ref($_) eq "HASH" ) { ( keys %$_, values %$_ ) }
+					elsif ( ref($_) eq "ARRAY" ) { @$_ }
+					else                         { $_ }
+				} $hash
+			) =~ m/$target/
+		  )
+		{
+			$self->print_and_die( $hash,
+				    "You have searched for the string '"
+				  . $self->options('inspect')
+				  . "':\n" );
+		}
+	}
 	$entryID  ||= 1;
 	$new_line ||= 0;
 	$area     ||= '';
@@ -669,126 +705,112 @@ sub parse_NCBI {
 	my ( $str, $keys, $delta, $tmp, @tmp );
 	$delta = 0;
 	if ( ref($hash) eq "ARRAY" ) {
-		foreach (@$hash) {
-			$delta = $self->parse_NCBI( $_, $area, $entryID, 1 );
-			$entryID += $delta;
-		}
+	foreach (@$hash) {
+		$delta = $self->parse_NCBI( $_, $area, $entryID, 1 );
+		$entryID += $delta;
 	}
-	elsif ( ref($hash) eq "HASH" ) {
-		$str = lc( join( " ", sort keys %$hash ) );
-		if ( defined $self->options('inspect') ) {
-			$self->options( 'inspect', lc( $self->options('inspect') ) );
-			if (
-				join( " ", lc( values %$hash ), $str ) =~
-				m/$self->options('inspect')/ )
-			{
-				$self->print_and_die( $hash,
-					    "You have searched for the string '"
-					  . $self->options('inspect')
-					  . "':\n" );
-			}
-		}
+}
+elsif ( ref($hash) eq "HASH" ) {
+	$str = lc( join( " ", sort keys %$hash ) );
 
-		#If it is some numers - ignore that
-		if ( $str eq "count value" ) {
-			return 0;    ## I skip the crap!
-		}
-		if ( $str eq "tag value" || $str eq "tag units value" ) {
-			$keys = { map { lc($_) => $_ } keys %$hash };
-			@tmp = split( "-", $area );
-			pop(@tmp);
-			$area = join( "-", @tmp );
-			## Here I do not want to create a new entry!
-			$delta = $self->add_if_empty( "$area-" . $hash->{ $keys->{'tag'} },
-				$hash->{ $keys->{'value'} }, $entryID );
-		}
-		elsif ( $str =~ m/content/ and $str =~ m/namespace/ ) {
-			$delta = $self->add_if_empty( $area . ".$hash->{'namespace'}",
-				$hash->{'content'}, $entryID );
-		}
-		elsif ( $str eq 'refcenter refname' ) {
-			$delta = $self->add_if_empty( $area . ".$hash->{'refcenter'}",
-				$hash->{'refname'}, $entryID );
-		}
-		else {
-			## If I have an accession or PRIMARY_ID entry I want to process that first!
-			$tmp = 0;
-			my $overall_delta = 0;
-			foreach my $key (
-				sort {
-					my @a = split( "-", $a );
-					my @b = split( "-", $b );
-					lc( $a[$#a] ) cmp lc( $b[$#b] )
-				} keys %$hash
-			  )
-			{
-				if ( defined $self->options('useOnly') ) {
-					unless ( lc($key) eq $key ) {
-						unless ( $self->options('useOnly')->{$key} ) {
-							warn "I skipp the key '$key'\n";
-							return $delta;
-						}
-					}
-				}
-				if ( defined $self->options('ignore') ) {
-					if ( $self->options('ignore')->{$key} ) {
+	#If it is some numers - ignore that
+	if ( $str eq "count value" ) {
+		return 0;    ## I skip the crap!
+	}
+	if ( $str eq "tag value" || $str eq "tag units value" ) {
+		$keys = { map { lc($_) => $_ } keys %$hash };
+		@tmp = split( "-", $area );
+		pop(@tmp);
+		$area = join( "-", @tmp );
+		## Here I do not want to create a new entry!
+		$delta = $self->add_if_empty( "$area-" . $hash->{ $keys->{'tag'} },
+			$hash->{ $keys->{'value'} }, $entryID );
+	}
+	elsif ( $str =~ m/content/ and $str =~ m/namespace/ ) {
+		$delta = $self->add_if_empty( $area . ".$hash->{'namespace'}",
+			$hash->{'content'}, $entryID );
+	}
+	elsif ( $str eq 'refcenter refname' ) {
+		$delta = $self->add_if_empty( $area . ".$hash->{'refcenter'}",
+			$hash->{'refname'}, $entryID );
+	}
+	else {
+		## If I have an accession or PRIMARY_ID entry I want to process that first!
+		$tmp = 0;
+		my $overall_delta = 0;
+		foreach my $key (
+			sort {
+				my @a = split( "-", $a );
+				my @b = split( "-", $b );
+				lc( $a[$#a] ) cmp lc( $b[$#b] )
+			} keys %$hash
+		  )
+		{
+			if ( defined $self->options('useOnly') ) {
+				unless ( lc($key) eq $key ) {
+					unless ( $self->options('useOnly')->{$key} ) {
 						warn "I skipp the key '$key'\n";
 						return $delta;
 					}
 				}
-				$hash->{$key} =~ s/\s+/ /g;
-				print "$key  =>  $hash->{$key} on line $entryID\n"
-				  if ( $self->{'debug'} and $tmp++ == 0 );
-				## this might need a new line, but that is not 100% sure!
-				$str = 0;
-				foreach ( @{ $self->options('addMultiple') } ) {
-					if ( $key =~ m/$_/ ) {
-						$delta =
-						  $self->parse_NCBI( $hash->{$key}, "$area-$key",
-							$entryID, 0 );
-						$str = 1;
-					}
+			}
+			if ( defined $self->options('ignore') ) {
+				if ( $self->options('ignore')->{$key} ) {
+					warn "I skipp the key '$key'\n";
+					return $delta;
 				}
-				if ( $str == 0 ) {
+			}
+			$hash->{$key} =~ s/\s+/ /g;
+			print "$key  =>  $hash->{$key} on line $entryID\n"
+			  if ( $self->{'debug'} and $tmp++ == 0 );
+			## this might need a new line, but that is not 100% sure!
+			$str = 0;
+			foreach ( @{ $self->options('addMultiple') } ) {
+				if ( $key =~ m/$_/ ) {
 					$delta =
 					  $self->parse_NCBI( $hash->{$key}, "$area-$key",
-						$entryID, 1 );
+						$entryID, 0 );
+					$str = 1;
 				}
-
-				#				$overall_delta = $delta unless ( $delta == 0);
-				( $entryID, $delta ) = $self->__cleanup( $entryID, $delta );
-				print "\t\tafterwards we are on line $entryID\n"
-				  if ( $tmp == 1 and $self->{'debug'} );
 			}
-			$delta = $overall_delta
-			  ;    ## I need to report back if I (ever) changed my entryID!!
+			if ( $str == 0 ) {
+				$delta =
+				  $self->parse_NCBI( $hash->{$key}, "$area-$key", $entryID, 1 );
+			}
+
+			#				$overall_delta = $delta unless ( $delta == 0);
+			( $entryID, $delta ) = $self->__cleanup( $entryID, $delta );
+			print "\t\tafterwards we are on line $entryID\n"
+			  if ( $tmp == 1 and $self->{'debug'} );
 		}
+		$delta = $overall_delta
+		  ;    ## I need to report back if I (ever) changed my entryID!!
 	}
-	else {         ## some real data
+}
+else {         ## some real data
 
 #		return 0 if ( defined $values -> { $hash } ) ;
 #		as the new column might come from a new hash, that might need merging to the last line - check that!
-		foreach ( @{ $self->options('addMultiple') } ) {
-			if ( $area =~ m/$_/ ) {
-				$delta = $self->register_column( $area, $hash, $entryID, 0 );
-			}
-		}
-		if ( $area =~ m/accession$/ ) {
-			$delta = $self->register_column( $area, $hash, $entryID, 1 );
-		}
-
-		#elsif ( $hash =~ m/^(\w\w\w\d+)_?r?1?$/ ) {    ## an accession!
-		elsif ( $hash =~ m/^\w\w\w\d+$/ ) {    ## an accession!
-			$delta = $self->add_if_unequal( $area, $hash, $entryID );
-		}
-		else {
-			$delta = $self->register_column( $area, $hash, $entryID, 1 );
+	foreach ( @{ $self->options('addMultiple') } ) {
+		if ( $area =~ m/$_/ ) {
+			$delta = $self->register_column( $area, $hash, $entryID, 0 );
 		}
 	}
+	if ( $area =~ m/accession$/ ) {
+		$delta = $self->register_column( $area, $hash, $entryID, 1 );
+	}
 
-	return
-	  $delta
-	  ;    ## we did add some data or respawned so if necessary update the id!
+	#elsif ( $hash =~ m/^(\w\w\w\d+)_?r?1?$/ ) {    ## an accession!
+	elsif ( $hash =~ m/^\w\w\w\d+$/ ) {    ## an accession!
+		$delta = $self->add_if_unequal( $area, $hash, $entryID );
+	}
+	else {
+		$delta = $self->register_column( $area, $hash, $entryID, 1 );
+	}
+}
+
+return
+  $delta;    ## we did add some data or respawned so if necessary update the id!
 }
 
 sub __cleanup {
@@ -802,7 +824,8 @@ sub __cleanup {
 
 sub print_and_die {
 	my ( $self, $xml ) = @_;
-	print Dumper($xml);
+	print " \$exp = " . root->print_perl_var_def( $xml ) . ";\n ";
+#	print Dumper($xml);
 	Carp::confess(shift);
 }
 
