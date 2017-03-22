@@ -33,11 +33,14 @@
        ## options for the Rsubread::featureCounts call
        
        -gtf_feature_type 
-                :the feature to quantify (default = exon)
+                 :the feature to quantify (default = exon)
        -gtf_attr_type    
-                :the attributeType (default = gene_id)
-       -paired  :is the data paried
-       -n       :how many processes to read the data (for the R process)
+                 :the attributeType (default = gene_id)
+       -paired   :is the data paried
+       -stranded :is the RNA seq been strand specific 
+                  default 0; 1 stranded or 2 reversely stranded
+                  
+       -n        :how many processes to read the data (for the R process)
        
        ## options for the slurm batch process
        
@@ -65,7 +68,7 @@ my $plugin_path = "$FindBin::Bin";
 my $VERSION = 'v1.0';
 
 my ( $help, $debug, $database, @bams, $gtf, $tmp_path, $amount,
-	$gtf_feature_type,
+	$gtf_feature_type, $stranded,
 	$gtf_attr_type, $paired, $n, @slurm, $IDXstats, $outfile );
 
 Getopt::Long::GetOptions(
@@ -74,6 +77,7 @@ Getopt::Long::GetOptions(
 	"-gtf_feature_type=s" => \$gtf_feature_type,
 	"-gtf_attr_type=s"    => \$gtf_attr_type,
 	"-paired"             => \$paired,
+	"-stranded=s"           => \$stranded,
 	"-amount=s"           => \$amount,
 	"-n=s"                => \$n,
 	"-outfile=s"          => \$outfile,
@@ -114,6 +118,11 @@ unless ( defined $tmp_path ) {
 unless ( defined $outfile ) {
 	$error .= "the cmd line switch -outfile is undefined!\n";
 }
+unless ( $stranded ) {
+	$stranded = 0;
+}elsif ( ! ( $stranded == 1 or $stranded == 2 ) ) {
+	$error .= "-stranded may only have the values 0, 1 or 2 - not '$stranded'\n";
+}
 
 map {
 	$warn .= "file $_ must not be given as relative path!\n"
@@ -148,6 +157,7 @@ $task_description .= " -gtf_feature_type '$gtf_feature_type'"
 $task_description .= " -gtf_attr_type '$gtf_attr_type'"
   if ( defined $gtf_attr_type );
 $task_description .= " -paired " if ($paired);
+$task_description .= " -stranded " if ($stranded);
 $task_description .= " -n '$n'"  if ( defined $n );
 $task_description .= " -tmp_path '$tmp_path'" unless ( $tmp_path eq "tmp" );
 $task_description .= " -outfile '$outfile'" if ( defined $outfile );
@@ -216,6 +226,7 @@ if ($paired) {
 else {
 	$paired = "F";
 }
+
 my $slurm;
 if (@slurm) {
 	use stefans_libs::SLURM;
@@ -249,7 +260,7 @@ for ( my $i = 0 ; $i < @bams ; $i += $amount ) {
 		"#library( StefansExpressionSet)", &read_bams_R(),
 		"library(Rsubread)",
 "dat$a <- read.bams( '$tmp_path/bams.$a.txt', '$gtf', nthreads =  $n, GTF.featureType = '$gtf_feature_type',
-					GTF.attrType = '$gtf_attr_type',isPairedEnd = $paired )",
+					GTF.attrType = '$gtf_attr_type',isPairedEnd = $paired , strandSpecific = $stranded )",
 		"save(dat$a, file='$tmp_path/Robject$a.RData')",
 		"system('touch $tmp_path/Robject$a.RData.finished')"
 	);
@@ -306,7 +317,7 @@ print
 sub read_bams_R {
 	return
 	  "read.bams <- function ( bamFiles, annotation, GTF.featureType='exon', 
-		GTF.attrType = 'gene_id', isPairedEnd = FALSE, nthreads = 2, as.obj=F) {
+		GTF.attrType = 'gene_id', isPairedEnd = FALSE, nthreads = 2, as.obj=F, strandSpecific = 0 ) {
 	if (file.exists(bamFiles)){
 		bamFiles <- readLines(bamFiles)
 	}
@@ -315,7 +326,7 @@ sub read_bams_R {
 	}
 
 	counts <- featureCounts(files =bamFiles,annot.ext = annotation ,isGTFAnnotationFile = TRUE,GTF.featureType = GTF.featureType,
-		GTF.attrType = GTF.attrType,allowMultiOverlap=T, isPairedEnd =isPairedEnd , nthreads = nthreads)
+		GTF.attrType = GTF.attrType,allowMultiOverlap=T, isPairedEnd =isPairedEnd , nthreads = nthreads, strandSpecific = strandSpecific )
 	save(counts, file='count_object.RData' )
 	if ( ! as.obj ) {
 		counts
