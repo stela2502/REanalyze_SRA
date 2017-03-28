@@ -63,7 +63,7 @@ sub table_and_colname {
 	my ( $self, $column, $entryID ) = @_;
 	my @tmp = split( "-", $column );
 	my $table_name;
-	
+
 	for ( my $i = 0 ; $i < $self->{'drop_first'} ; $i++ ) {
 		shift(@tmp);
 	}
@@ -78,7 +78,7 @@ sub table_and_colname {
 	{
 		shift(@tmp);
 	}
-	if ($table_name eq "" ) {
+	if ( $table_name eq "" ) {
 		$table_name = 'undefined';
 	}
 	my $data_table = $self->register_table( $table_name, $entryID );
@@ -458,6 +458,10 @@ sub createSummaryTable {
 		$self->create_download_column( $ret, 'ERR', 'ERP', 'ERR' );
 		$self->create_download_column( $ret, 'ERR', 'ERR' );
 		$self->create_download_column( $ret, 'DRR', 'DRP' );
+		
+		$self->create_experiment_download_column( $ret, "SRX");
+		$self->create_experiment_download_column( $ret, "ERX");
+		$self->create_experiment_download_column( $ret, "DRX");
 	}
 	return $ret;
 }
@@ -470,6 +474,47 @@ sub write_summary_file {
 		$ret->write_file($fname);
 	}
 
+	return $ret;
+}
+
+sub create_experiment_download_column {
+	my ( $self, $ret, $acc, @sample ) = @_;
+
+	if ( defined $ret->Header_Position('Download') ) {
+		my $OK = 1;
+		map { $OK = 0 unless ( $_ =~ m/wget/ ); }
+		  @{ $ret->GetAsArray('Download') };
+		return $ret if ($OK);
+	}
+	my $accession_col = [];
+	my $sample_col    = [];
+	my $add           = 0;
+	( @$accession_col[$add] ) = $ret->Header_Position($acc);
+	return $ret unless ( defined @$accession_col[$add] );
+	
+# ftp://ftp-trace.ncbi.nih.gov/sra/sra-instant/reads/ByExp/sra/ERX/ERX690/ERX690616/ERR746934/
+	my ($download_col) = $ret->Add_2_Header('Download');
+	my $serv = "ftp://ftp-trace.ncbi.nih.gov";
+	my ( $sra, $srr );
+	for ( my $i = 0 ; $i < $ret->Rows() ; $i++ ) {
+		for ( my $a = 0 ; $a < 3 ; $a++ ) {
+			next if ( defined @{ @{ $ret->{'data'} }[$i] }[ $download_col ] and @{ @{ $ret->{'data'} }[$i] }[ $download_col ] =~ m/wget/ );
+			next unless ( defined @$accession_col[$a] );
+			$srr = @{ @{ $ret->{'data'} }[$i] }[ @$accession_col[$a] ];
+
+  #print "sra (@$sample_col[$a]) =$sra and srr (@$accession_col[$a]) = $srr \n";
+			if ( $self->is_acc($srr) ) {
+				@{ @{ $ret->{'data'} }[$i] }[$download_col] = "wget -r '"
+				  . join( "/",
+					$serv,
+					"sra/sra-instant/reads/ByExp/sra",
+					substr( $srr, 0, 3 ),
+					substr( $srr, 0, 6 ), $srr )."'";
+				last;
+			}
+
+		}
+	}
 	return $ret;
 }
 
@@ -503,6 +548,8 @@ sub create_download_column {
 	else {
 #print "this should work!  @$accession_col[$add] + @$sample_col[$add]\n";
 # /sra/sra-instant/reads/ByRun/sra/{SRR|ERR|DRR}/<first 6 characters of accession>/<accession>/<accession>.sra
+#or by experiment?
+# ftp://ftp-trace.ncbi.nih.gov/sra/sra-instant/reads/ByExp/sra/ERX/ERX690/ERX690616/ERR746934/
 		my ($download_col) = $ret->Add_2_Header('Download');
 		my $serv = "ftp://ftp-trace.ncbi.nih.gov";
 		my ( $sra, $srr );
@@ -705,112 +752,114 @@ sub parse_NCBI {
 	my ( $str, $keys, $delta, $tmp, @tmp );
 	$delta = 0;
 	if ( ref($hash) eq "ARRAY" ) {
-	foreach (@$hash) {
-		$delta = $self->parse_NCBI( $_, $area, $entryID, 1 );
-		$entryID += $delta;
+		foreach (@$hash) {
+			$delta = $self->parse_NCBI( $_, $area, $entryID, 1 );
+			$entryID += $delta;
+		}
 	}
-}
-elsif ( ref($hash) eq "HASH" ) {
-	$str = lc( join( " ", sort keys %$hash ) );
+	elsif ( ref($hash) eq "HASH" ) {
+		$str = lc( join( " ", sort keys %$hash ) );
 
-	#If it is some numers - ignore that
-	if ( $str eq "count value" ) {
-		return 0;    ## I skip the crap!
-	}
-	if ( $str eq "tag value" || $str eq "tag units value" ) {
-		$keys = { map { lc($_) => $_ } keys %$hash };
-		@tmp = split( "-", $area );
-		pop(@tmp);
-		$area = join( "-", @tmp );
-		## Here I do not want to create a new entry!
-		$delta = $self->add_if_empty( "$area-" . $hash->{ $keys->{'tag'} },
-			$hash->{ $keys->{'value'} }, $entryID );
-	}
-	elsif ( $str =~ m/content/ and $str =~ m/namespace/ ) {
-		$delta = $self->add_if_empty( $area . ".$hash->{'namespace'}",
-			$hash->{'content'}, $entryID );
-	}
-	elsif ( $str eq 'refcenter refname' ) {
-		$delta = $self->add_if_empty( $area . ".$hash->{'refcenter'}",
-			$hash->{'refname'}, $entryID );
-	}
-	else {
-		## If I have an accession or PRIMARY_ID entry I want to process that first!
-		$tmp = 0;
-		my $overall_delta = 0;
-		foreach my $key (
-			sort {
-				my @a = split( "-", $a );
-				my @b = split( "-", $b );
-				lc( $a[$#a] ) cmp lc( $b[$#b] )
-			} keys %$hash
-		  )
-		{
-			if ( defined $self->options('useOnly') ) {
-				unless ( lc($key) eq $key ) {
-					unless ( $self->options('useOnly')->{$key} ) {
+		#If it is some numers - ignore that
+		if ( $str eq "count value" ) {
+			return 0;    ## I skip the crap!
+		}
+		if ( $str eq "tag value" || $str eq "tag units value" ) {
+			$keys = { map { lc($_) => $_ } keys %$hash };
+			@tmp = split( "-", $area );
+			pop(@tmp);
+			$area = join( "-", @tmp );
+			## Here I do not want to create a new entry!
+			$delta = $self->add_if_empty( "$area-" . $hash->{ $keys->{'tag'} },
+				$hash->{ $keys->{'value'} }, $entryID );
+		}
+		elsif ( $str =~ m/content/ and $str =~ m/namespace/ ) {
+			$delta = $self->add_if_empty( $area . ".$hash->{'namespace'}",
+				$hash->{'content'}, $entryID );
+		}
+		elsif ( $str eq 'refcenter refname' ) {
+			$delta = $self->add_if_empty( $area . ".$hash->{'refcenter'}",
+				$hash->{'refname'}, $entryID );
+		}
+		else {
+			## If I have an accession or PRIMARY_ID entry I want to process that first!
+			$tmp = 0;
+			my $overall_delta = 0;
+			foreach my $key (
+				sort {
+					my @a = split( "-", $a );
+					my @b = split( "-", $b );
+					lc( $a[$#a] ) cmp lc( $b[$#b] )
+				} keys %$hash
+			  )
+			{
+				if ( defined $self->options('useOnly') ) {
+					unless ( lc($key) eq $key ) {
+						unless ( $self->options('useOnly')->{$key} ) {
+							warn "I skipp the key '$key'\n";
+							return $delta;
+						}
+					}
+				}
+				if ( defined $self->options('ignore') ) {
+					if ( $self->options('ignore')->{$key} ) {
 						warn "I skipp the key '$key'\n";
 						return $delta;
 					}
 				}
-			}
-			if ( defined $self->options('ignore') ) {
-				if ( $self->options('ignore')->{$key} ) {
-					warn "I skipp the key '$key'\n";
-					return $delta;
+				$hash->{$key} =~ s/\s+/ /g;
+				print "$key  =>  $hash->{$key} on line $entryID\n"
+				  if ( $self->{'debug'} and $tmp++ == 0 );
+				## this might need a new line, but that is not 100% sure!
+				$str = 0;
+				foreach ( @{ $self->options('addMultiple') } ) {
+					if ( $key =~ m/$_/ ) {
+						$delta =
+						  $self->parse_NCBI( $hash->{$key}, "$area-$key",
+							$entryID, 0 );
+						$str = 1;
+					}
 				}
-			}
-			$hash->{$key} =~ s/\s+/ /g;
-			print "$key  =>  $hash->{$key} on line $entryID\n"
-			  if ( $self->{'debug'} and $tmp++ == 0 );
-			## this might need a new line, but that is not 100% sure!
-			$str = 0;
-			foreach ( @{ $self->options('addMultiple') } ) {
-				if ( $key =~ m/$_/ ) {
+				if ( $str == 0 ) {
 					$delta =
-					  $self->parse_NCBI( $hash->{$key}, "$area-$key",
-						$entryID, 0 );
-					$str = 1;
+					  $self->parse_NCBI( $hash->{$key}, "$area-$key", $entryID,
+						1 );
 				}
-			}
-			if ( $str == 0 ) {
-				$delta =
-				  $self->parse_NCBI( $hash->{$key}, "$area-$key", $entryID, 1 );
-			}
 
-			#				$overall_delta = $delta unless ( $delta == 0);
-			( $entryID, $delta ) = $self->__cleanup( $entryID, $delta );
-			print "\t\tafterwards we are on line $entryID\n"
-			  if ( $tmp == 1 and $self->{'debug'} );
+				#				$overall_delta = $delta unless ( $delta == 0);
+				( $entryID, $delta ) = $self->__cleanup( $entryID, $delta );
+				print "\t\tafterwards we are on line $entryID\n"
+				  if ( $tmp == 1 and $self->{'debug'} );
+			}
+			$delta = $overall_delta
+			  ;    ## I need to report back if I (ever) changed my entryID!!
 		}
-		$delta = $overall_delta
-		  ;    ## I need to report back if I (ever) changed my entryID!!
 	}
-}
-else {         ## some real data
+	else {         ## some real data
 
 #		return 0 if ( defined $values -> { $hash } ) ;
 #		as the new column might come from a new hash, that might need merging to the last line - check that!
-	foreach ( @{ $self->options('addMultiple') } ) {
-		if ( $area =~ m/$_/ ) {
-			$delta = $self->register_column( $area, $hash, $entryID, 0 );
+		foreach ( @{ $self->options('addMultiple') } ) {
+			if ( $area =~ m/$_/ ) {
+				$delta = $self->register_column( $area, $hash, $entryID, 0 );
+			}
+		}
+		if ( $area =~ m/accession$/ ) {
+			$delta = $self->register_column( $area, $hash, $entryID, 1 );
+		}
+
+		#elsif ( $hash =~ m/^(\w\w\w\d+)_?r?1?$/ ) {    ## an accession!
+		elsif ( $hash =~ m/^\w\w\w\d+$/ ) {    ## an accession!
+			$delta = $self->add_if_unequal( $area, $hash, $entryID );
+		}
+		else {
+			$delta = $self->register_column( $area, $hash, $entryID, 1 );
 		}
 	}
-	if ( $area =~ m/accession$/ ) {
-		$delta = $self->register_column( $area, $hash, $entryID, 1 );
-	}
 
-	#elsif ( $hash =~ m/^(\w\w\w\d+)_?r?1?$/ ) {    ## an accession!
-	elsif ( $hash =~ m/^\w\w\w\d+$/ ) {    ## an accession!
-		$delta = $self->add_if_unequal( $area, $hash, $entryID );
-	}
-	else {
-		$delta = $self->register_column( $area, $hash, $entryID, 1 );
-	}
-}
-
-return
-  $delta;    ## we did add some data or respawned so if necessary update the id!
+	return
+	  $delta
+	  ;    ## we did add some data or respawned so if necessary update the id!
 }
 
 sub __cleanup {
@@ -824,8 +873,9 @@ sub __cleanup {
 
 sub print_and_die {
 	my ( $self, $xml ) = @_;
-	print " \$exp = " . root->print_perl_var_def( $xml ) . ";\n ";
-#	print Dumper($xml);
+	print " \$exp = " . root->print_perl_var_def($xml) . ";\n ";
+
+	#	print Dumper($xml);
 	Carp::confess(shift);
 }
 
