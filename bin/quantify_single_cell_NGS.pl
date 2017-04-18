@@ -69,7 +69,7 @@ my $VERSION = 'v1.0';
 
 my ( $help, $debug, $database, @bams, $gtf, $tmp_path, $amount,
 	$gtf_feature_type, $stranded,
-	$gtf_attr_type, $paired, $n, @slurm, $IDXstats, $outfile );
+	$gtf_attr_type, $paired, $n, @slurm, $IDXstats, $outfile, $ls_input );
 
 Getopt::Long::GetOptions(
 	"-bams=s{,}"          => \@bams,
@@ -92,6 +92,9 @@ Getopt::Long::GetOptions(
 my $warn  = '';
 my $error = '';
 
+unless ( -f $bams[0] ) {
+	eval { open ( IN, "ls $bams[0] |"); $ls_input = $bams[0]; @bams = map{chomp;$_} <IN>; close ( IN ); };
+}
 unless ( -f $bams[0] ) {
 	$error .= "the cmd line switch -bams is undefined!\n";
 }
@@ -180,42 +183,6 @@ open( LOG, ">$outfile.log" ) or die $!;
 print LOG $task_description . "\n";
 close(LOG);
 
-unless ( -f $IDXstats ) {
-	$IDXstats = "$fm->{'path'}/$fm->{'filename_base'}_IDXstats.xls";
-	$IDXstats =~ s!//!/!g;
-	my $cmd =
-	    "IDXstats_4_bams.pl -bams '"
-	  . join( "' '", @bams )
-	  . "' -outfile $IDXstats -n $n";
-	print
-"As I did not get the IDXstats summary file I will create one($IDXstats)\n$cmd\n";
-	system($cmd );
-}
-
-## convert the IDX stats into a usable R object
-
-my $failedCellsRobj = "$fm->{'path'}/FailedSamples.RData";
-
-unless ( -f $failedCellsRobj ) {
-	open( RSCRIPT, ">$fm->{'path'}/idxstats2failedSamples.R" )
-	  or die
-"I could not create the checkup R script '$fm->{'path'}/idxstats2failedSamples.R'\n$!\n";
-
-	print RSCRIPT "library(stringr)
-t <- read.delim('$IDXstats')
-FailedSamples <- as.character(
-   t[
-        which(is.na(apply( t, 1, function(x) { sum(as.numeric(x[grep ('chr[XY1-9][1-9]*$',colnames(t))]))}))==T)
-        ,1
-   ]
-)
-names(FailedSamples) <- str_extract( FailedSamples, 'SRR\\d*')
-save(FailedSamples,file='$failedCellsRobj' )
-";
-	close(RSCRIPT);
-
-	system("R CMD BATCH $fm->{'path'}/idxstats2failedSamples.R");
-}
 
 ## Do whatever you want!
 my ($max);
@@ -309,10 +276,54 @@ print SCR join(
 );
 close(SCR);
 
-system("R CMD BATCH $tmp_path/sumup.R") unless ($debug);
+## while all other things are processed lets work on the IDXstats....
+
+unless ( -f $IDXstats ) {
+	$IDXstats = "$fm->{'path'}/$fm->{'filename_base'}_IDXstats.xls";
+	$IDXstats =~ s!//!/!g;
+	if ( defined $ls_input ){
+		@bams= ($ls_input);
+	}
+	my $cmd =
+	    "IDXstats_4_bams.pl -bams '"
+	  . join( "' '", @bams )
+	  . "' -outfile $IDXstats -n $n";
+	print
+"As I did not get the IDXstats summary file I will create one($IDXstats)\n$cmd\n";
+	system($cmd );
+}
+
+## convert the IDX stats into a usable R object
+
+my $failedCellsRobj = "$fm->{'path'}/FailedSamples.RData";
+
+unless ( -f $failedCellsRobj ) {
+	open( RSCRIPT, ">$fm->{'path'}/idxstats2failedSamples.R" )
+	  or die
+"I could not create the checkup R script '$fm->{'path'}/idxstats2failedSamples.R'\n$!\n";
+
+	print RSCRIPT "library(stringr)
+t <- read.delim('$IDXstats')
+FailedSamples <- as.character(
+   t[
+        which(is.na(apply( t, 1, function(x) { sum(as.numeric(x[grep ('chr[XY1-9][1-9]*$',colnames(t))]))}))==T)
+        ,1
+   ]
+)
+names(FailedSamples) <- str_extract( FailedSamples, 'SRR\\d*')
+save(FailedSamples,file='$failedCellsRobj' )
+";
+	close(RSCRIPT);
+
+	system("R CMD BATCH $fm->{'path'}/idxstats2failedSamples.R");
+}
+
+## now we can think about summing up the results / hopefully most quantifications have been finished up to now ;-)
+
+system("R CMD BATCH $tmp_path/sumup.R &") unless ($debug);
 
 print
-"The file '$outfile' should now contain a R table object that can be further processed in any R script\n";
+"Please wait for the sumuo.R process to finish\nThe file '$outfile' will then contain the R counts object that can be further processed in any R script\n";
 
 sub read_bams_R {
 	return
