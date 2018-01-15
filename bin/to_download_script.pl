@@ -115,14 +115,12 @@ foreach my $ifile ( @infiles ){
 		@line = split( /\t/, $_ );
 		unless ($line[-1] eq "Download") {
 			@outfile = split(/["'\s]+/, $line[-1]);
-			#die "where is the outfile?: '".join("', '",@outfile)."'\n";
-			if ( -f "$outfile[2]" ) {
-				print OUT "#".$line[-1]."\n";
-			}else {
-				print OUT $line[-1]."\n";
-			}
+			$line[-1] =~ s/\-O/-t 2 -O/ unless ( $line[-1] =~ m/-t 2/ );
+			print OUT "if ! [ -f '$outfile[2]' ]; then\n\t$line[-1]\nfi\n";
 		} 
 	}
+	## get rid of the no data files (failed download)
+	print  OUT " find . -name '*.sra' -size 0 -print0 | xargs -0 rm\n";
 	close ( IN );
 }
 close ( OUT );
